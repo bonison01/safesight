@@ -78,6 +78,21 @@ const About = () => {
                 <br />Founder, Mom’s by Goo Goo Foods
               </p>
             </div>
+<h2 className="text-3xl font-bold text-gray-800 mb-6">Legals</h2>
+<p className="text-lg text-gray-600 mb-6">
+              We are a registered food business committed to quality and safety. Our details are as follows:
+            </p>
+            <p className="text-lg text-gray-600 mb-6"> 
+              Registered Business Name: Goo Goo Foods <br />
+              Address: Yaiskul Chingakham Leirak
+              Imphal West, Manipur 795001<br />
+              GSTIN  14CAOPM6149J2Z8<br />
+              FSSAI Lic. No. : 1162401300006<br />
+              MSME Regd. : UDYAM-MN-05-0003159<br />
+              Email ID :  googoofoodsmoms@gmail.com<br />
+              Contact No. +91 6009809060
+            </p>
+
           </div>
         </div>
       </section>

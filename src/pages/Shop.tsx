@@ -64,10 +64,10 @@ const Shop = () => {
         console.error('Database error:', error);
         throw error;
       }
-      
+
       console.log('Products fetched successfully:', data?.length || 0);
       setProducts(data || []);
-      
+
       // Initialize quantities
       const initialQuantities: { [key: string]: number } = {};
       (data || []).forEach(product => {
@@ -115,7 +115,7 @@ const Shop = () => {
       acc[categoryName].push(product);
       return acc;
     }, {});
-    
+
     setGroupedProducts(grouped);
   };
 
@@ -142,20 +142,20 @@ const Shop = () => {
 
   const handleBuyNow = async (product: Product) => {
     console.log('🛒 Buy Now clicked for product:', product.name);
-    
+
     if (isAuthenticated) {
       try {
         console.log('🔄 Adding item to cart for authenticated user...');
         await addToCart(product.id, quantities[product.id] || 1);
-        
+
         console.log('🔄 Refreshing cart data...');
         await refreshCart();
-        
+
         setTimeout(() => {
           console.log('➡️ Navigating to checkout with updated cart...');
           navigate('/checkout');
         }, 100);
-        
+
       } catch (error) {
         console.error('❌ Error in Buy Now for authenticated user:', error);
         toast({
@@ -166,8 +166,8 @@ const Shop = () => {
       }
     } else {
       console.log('➡️ Guest checkout - navigating with product data...');
-      navigate('/checkout', { 
-        state: { 
+      navigate('/checkout', {
+        state: {
           guestCheckout: true,
           product: product,
           quantity: quantities[product.id] || 1
@@ -222,7 +222,7 @@ const Shop = () => {
               </span>
             )}
           </div>
-          
+
           <div className="flex items-center justify-center space-x-1 md:space-x-2 mb-2 md:mb-4">
             <Button
               variant="outline"
@@ -243,7 +243,7 @@ const Shop = () => {
               <Plus className="w-2 h-2 md:w-3 md:h-3" />
             </Button>
           </div>
-          
+
           <div className="space-y-1 md:space-y-2">
             <Button
               onClick={() => handleBuyNow(product)}
@@ -253,7 +253,7 @@ const Shop = () => {
               <ShoppingCart className="w-3 h-3 md:w-4 md:h-4 mr-1 md:mr-2" />
               {product.stock_quantity === 0 ? 'Out of Stock' : 'Buy Now'}
             </Button>
-            
+
             <Button
               onClick={() => handleAddToCart(product)}
               variant="outline"
@@ -262,7 +262,7 @@ const Shop = () => {
             >
               Add to Cart
             </Button>
-            
+
             <Button
               onClick={() => navigate(`/product/${product.id}`)}
               variant="ghost"
@@ -299,7 +299,7 @@ const Shop = () => {
           <p className="text-xl md:text-2xl max-w-3xl mx-auto mb-8">
             Discover our carefully crafted collection of traditional foods
           </p>
-          
+
           <div className="mt-8">
             {isAuthenticated ? (
               <div className="flex items-center justify-center space-x-4">
@@ -307,10 +307,10 @@ const Shop = () => {
                   <User className="h-5 w-5" />
                   <span>Welcome back, {user?.email}</span>
                 </div>
-                <Button 
+                <Button
                   onClick={handleCartClick}
                   variant="outline"
-                  className="text-white border-white hover:bg-white hover:text-black transition-all duration-300"
+                  className="bg-green-500 text-white border border-green-500 hover:bg-white hover:text-green-500 transition-all duration-300"
                 >
                   <ShoppingCart className="h-4 w-4 mr-2" />
                   Cart ({cartCount})
@@ -320,17 +320,20 @@ const Shop = () => {
               <div className="space-y-4">
                 <p className="text-blue-200 text-lg">Browse, shop, and checkout as a guest • Sign in for a better experience</p>
                 <div className="flex justify-center space-x-4">
-                  <Button 
+                  <Button
                     onClick={() => navigate('/auth')}
                     variant="outline"
-                    className="text-white border-white hover:bg-white hover:text-black transition-all duration-300"
+                    // className="text-white border-white hover:bg-white hover:text-black transition-all duration-300"
+                    className="bg-black text-white border border-white hover:bg-white hover:text-black transition-all duration-300"
+
                   >
                     Sign In / Register
                   </Button>
-                  <Button 
+                  <Button
                     onClick={handleCartClick}
                     variant="outline"
-                    className="text-white border-white hover:bg-white hover:text-black transition-all duration-300"
+                    // className="text-white border-white hover:bg-white hover:text-black transition-all duration-300"
+                    className="bg-green-500 text-white border border-green-500 hover:bg-white hover:text-green-500 transition-all duration-300"
                   >
                     <ShoppingCart className="h-4 w-4 mr-2" />
                     Cart ({cartCount})
@@ -358,7 +361,7 @@ const Shop = () => {
                 />
               </div>
             </div>
-            
+
             <div className="flex items-center space-x-4">
               <div className="flex items-center space-x-2">
                 <Filter className="h-4 w-4 text-gray-600" />
@@ -379,7 +382,7 @@ const Shop = () => {
               </Select>
             </div>
           </div>
-          
+
           {(searchTerm || selectedCategory !== 'all') && (
             <div className="mt-4 flex items-center space-x-2">
               <span className="text-sm text-gray-600">
@@ -438,7 +441,7 @@ const Shop = () => {
                     <div className="flex-1 h-px bg-gradient-to-r from-gray-300 to-transparent ml-4"></div>
                     <span className="text-sm text-gray-500 ml-4">{categoryProducts.length} items</span>
                   </div>
-                  
+
                   <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-4 md:gap-8">
                     {categoryProducts.map(renderProductCard)}
                   </div>
@@ -452,7 +455,7 @@ const Shop = () => {
                 {searchTerm || selectedCategory !== 'all' ? 'No products found' : 'No Products Available'}
               </h3>
               <p className="text-gray-600 mb-8 max-w-md mx-auto">
-                {searchTerm || selectedCategory !== 'all' 
+                {searchTerm || selectedCategory !== 'all'
                   ? 'Try adjusting your search or filter criteria to find what you\'re looking for.'
                   : 'We\'re working on adding new products. Please check back soon!'
                 }
@@ -470,13 +473,13 @@ const Shop = () => {
               )}
             </div>
           )}
-          
+
           {filteredProducts.length > 0 && (
             <div className="mt-16 text-center">
               <div className="bg-gradient-to-r from-gray-50 to-gray-100 p-8 rounded-xl shadow-lg max-w-md mx-auto border border-gray-200">
                 <h3 className="text-2xl font-bold text-black mb-4">More Products Coming Soon!</h3>
                 <p className="text-gray-600 mb-6">
-                  We're constantly working on new flavors and products to add to our collection. 
+                  We're constantly working on new flavors and products to add to our collection.
                   Stay tuned for exciting additions to the Googoo Foods family.
                 </p>
                 <div className="bg-white p-4 rounded-lg border border-gray-300 shadow-sm">

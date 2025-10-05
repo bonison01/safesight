@@ -124,22 +124,26 @@ const Contact = () => {
             {/* Contact Information */}
             <div>
               <h2 className="text-3xl font-bold text-gray-800 mb-6">Get in Touch</h2>
-              
+
               <div className="space-y-8">
                 <div>
                   <h3 className="text-xl font-semibold text-gray-800 mb-3">Contact Information</h3>
                   <div className="space-y-3">
                     <div>
                       <span className="font-medium text-gray-700">Email:</span>
-                      <span className="text-gray-600 ml-2">hello@googoofoods.com</span>
+                      <span className="text-gray-600 ml-2">googoofoodsmoms@gmail.com</span>
                     </div>
                     <div>
                       <span className="font-medium text-gray-700">Phone:</span>
-                      <span className="text-gray-600 ml-2">(555) 123-4567</span>
+                      <span className="text-gray-600 ml-2">(+91) 6009809060</span>
                     </div>
                     <div>
                       <span className="font-medium text-gray-700">Address:</span>
-                      <span className="text-gray-600 ml-2">123 Traditional Way, Flavor City, FC 12345</span>
+                      <span className="text-gray-600 ml-2">Goo Goo Foods
+                        Yaiskul Chingakham Leirak
+                        Imphal West, Manipur 795001
+                      </span>
+
                     </div>
                   </div>
                 </div>
@@ -165,7 +169,7 @@ const Contact = () => {
                 <div>
                   <h3 className="text-xl font-semibold text-gray-800 mb-3">Quick Responses</h3>
                   <p className="text-gray-600 mb-4">
-                    We typically respond to inquiries within 24 hours during business days. 
+                    We typically respond to inquiries within 24 hours during business days.
                     For urgent matters, please call us directly.
                   </p>
                 </div>
@@ -173,8 +177,8 @@ const Contact = () => {
                 <div className="bg-orange-50 p-6 rounded-lg">
                   <h3 className="text-xl font-semibold text-orange-800 mb-3">Wholesale Inquiries</h3>
                   <p className="text-gray-700">
-                    Interested in carrying our products in your store? We'd love to discuss 
-                    wholesale opportunities with you. Please mention "Wholesale" in your 
+                    Interested in carrying our products in your store? We'd love to discuss
+                    wholesale opportunities with you. Please mention "Wholesale" in your
                     message subject.
                   </p>
                 </div>
@@ -188,36 +192,36 @@ const Contact = () => {
       <section className="py-16 bg-gray-50">
         <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8">
           <h2 className="text-3xl font-bold text-gray-800 mb-8 text-center">Frequently Asked Questions</h2>
-          
+
           <div className="space-y-6">
             <div className="bg-white p-6 rounded-lg shadow-sm">
               <h3 className="text-lg font-semibold text-gray-800 mb-2">How long do your products last?</h3>
               <p className="text-gray-600">
-                Our products have a shelf life of 12-18 months when stored properly in a cool, dry place. 
+                Our products have a shelf life of 12-18 months when stored properly in a cool, dry place.
                 Once opened, refrigerate and consume within 30 days for best quality.
               </p>
             </div>
-            
+
             <div className="bg-white p-6 rounded-lg shadow-sm">
               <h3 className="text-lg font-semibold text-gray-800 mb-2">Do you ship nationwide?</h3>
               <p className="text-gray-600">
-                Yes, we ship to all 50 states. Standard shipping takes 3-5 business days, 
+                Yes, we ship to all 50 states. Standard shipping takes 3-5 business days,
                 and expedited options are available at checkout.
               </p>
             </div>
-            
+
             <div className="bg-white p-6 rounded-lg shadow-sm">
               <h3 className="text-lg font-semibold text-gray-800 mb-2">Are your products preservative-free?</h3>
               <p className="text-gray-600">
-                We use only natural preservation methods and minimal natural preservatives 
+                We use only natural preservation methods and minimal natural preservatives
                 to maintain freshness while keeping our products as natural as possible.
               </p>
             </div>
-            
+
             <div className="bg-white p-6 rounded-lg shadow-sm">
               <h3 className="text-lg font-semibold text-gray-800 mb-2">Can I return products if I'm not satisfied?</h3>
               <p className="text-gray-600">
-                Yes, we offer a 100% satisfaction guarantee. If you're not completely satisfied 
+                Yes, we offer a 100% satisfaction guarantee. If you're not completely satisfied
                 with your purchase, contact us within 30 days for a full refund or exchange.
               </p>
             </div>

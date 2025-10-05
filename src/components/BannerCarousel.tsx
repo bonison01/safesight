@@ -145,9 +145,9 @@ const BannerCarousel = () => {
                         <h1 className="text-4xl md:text-6xl font-bold">
                           {banner.title}
                         </h1>
-                        <h2 className="text-2xl md:text-4xl font-light text-gray-300">
+                        <h4 className="text-10xl md:text-4xl font-light text-gray-300">
                           {banner.subtitle}
-                        </h2>
+                        </h4>
                         <div className="space-x-4 pt-4">
                           <Link
                             to={banner.button_link}

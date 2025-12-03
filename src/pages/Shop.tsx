@@ -1,32 +1,17 @@
-// src/pages/Shop.tsx
-
-import { useState, useEffect } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/hooks/useAuthContext';
 import { useCart } from '@/hooks/useCartContext';
 import Layout from '@/components/Layout';
 import CartSidebar from '@/components/CartSidebar';
-import {
-  Loader2,
-  Package,
-  ShoppingCart,
-  Plus,
-  Minus,
-  Search,
-  Filter
-} from 'lucide-react';
-import { useToast } from '@/hooks/use-toast';
+import { Loader2, ShoppingCart, Filter, Search, ChevronDown, ChevronUp, Star } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue
-} from '@/components/ui/select';
+import { useToast } from '@/hooks/use-toast';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { useNavigate } from 'react-router-dom';
 
+// Types
 interface Variant {
   id: string;
   product_id: string;
@@ -47,25 +32,31 @@ interface Product {
   category: string | null;
   is_active: boolean;
   stock_quantity: number | null;
-  // add variant list
+  seller?: string | null;
+  rating?: number | null;
   variants?: Variant[];
 }
 
-interface GroupedProducts {
-  [category: string]: Product[];
-}
+type SortOption = 'popular' | 'new' | 'price_low' | 'price_high' | 'rating';
+
+const PAGE_SIZE = 24;
 
 const Shop = () => {
   const [products, setProducts] = useState<Product[]>([]);
-  const [filteredProducts, setFilteredProducts] = useState<Product[]>([]);
-  const [groupedProducts, setGroupedProducts] = useState<GroupedProducts>({});
+  const [filtered, setFiltered] = useState<Product[]>([]);
   const [loading, setLoading] = useState(true);
   const [cartOpen, setCartOpen] = useState(false);
-  const [quantities, setQuantities] = useState<{ [key: string]: number }>({});
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedCategory, setSelectedCategory] = useState<string>('all');
+  const [selectedBrands, setSelectedBrands] = useState<string[]>([]);
+  const [priceRange, setPriceRange] = useState<[number, number]>([0, 10000]);
+  const [inStockOnly, setInStockOnly] = useState(false);
+  const [sortBy, setSortBy] = useState<SortOption>('popular');
+  const [page, setPage] = useState(1);
+  const [expandedFilters, setExpandedFilters] = useState(true);
+
   const { toast } = useToast();
-  const { isAuthenticated, user } = useAuth();
+  const { isAuthenticated } = useAuth();
   const { addToCart, cartCount, refreshCart } = useCart();
   const navigate = useNavigate();
 
@@ -74,384 +65,325 @@ const Shop = () => {
   }, []);
 
   useEffect(() => {
-    filterProducts();
-  }, [products, searchTerm, selectedCategory]);
+    applyFilters();
+  }, [products, searchTerm, selectedCategory, selectedBrands, priceRange, inStockOnly, sortBy, page]);
 
+  // Fetch products + variants (marketplace style)
   const fetchProducts = async () => {
     try {
       setLoading(true);
-
-      // Fetch products
       const { data: prodData, error: prodErr } = await supabase
         .from('products')
-        .select('id, name, price, offer_price, image_url, description, category, is_active, stock_quantity')
+        .select('id, name, price, offer_price, image_url, description, category, is_active, stock_quantity, seller, rating')
         .eq('is_active', true)
-        .order('category', { ascending: true })
         .order('created_at', { ascending: false });
 
       if (prodErr) throw prodErr;
-
       const productsRaw = prodData || [];
 
-      // Fetch variants
       const { data: varData, error: varErr } = await supabase
         .from('product_variants')
         .select('id, product_id, color, size, price, stock_quantity, image_url');
 
       if (varErr) throw varErr;
-
       const variantsRaw = varData || [];
 
-      // Map variants into products
-      const productsWithVariants: Product[] = productsRaw.map((p) => ({
+      const mapped: Product[] = (productsRaw as any[]).map((p) => ({
         ...p,
         variants: variantsRaw.filter((v) => v.product_id === p.id)
       }));
 
-      setProducts(productsWithVariants);
-
-      // Set default quantities
-      const initialQuantities: { [key: string]: number } = {};
-      productsWithVariants.forEach((p) => {
-        initialQuantities[p.id] = 1;
-      });
-      setQuantities(initialQuantities);
-
+      setProducts(mapped);
     } catch (error: any) {
       console.error('Error fetching products:', error);
       toast({
-        title: 'Error',
-        description: 'Failed to load products and variants. Please try again later.',
+        title: 'Error loading products',
+        description: 'Could not fetch product list. Try again later.',
         variant: 'destructive'
       });
-      setProducts([]);
     } finally {
       setLoading(false);
     }
   };
 
-  const filterProducts = () => {
-    let filtered = products;
+  const uniqueCategories = useMemo(() => {
+    return Array.from(new Set(products.map((p) => p.category).filter(Boolean))).sort();
+  }, [products]);
 
-    if (searchTerm) {
-      filtered = filtered.filter(
-        (product) =>
-          product.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-          (product.description &&
-            product.description.toLowerCase().includes(searchTerm.toLowerCase()))
-      );
-    }
+  const uniqueBrands = useMemo(() => {
+    return Array.from(new Set(products.map((p) => p.seller).filter(Boolean))).sort();
+  }, [products]);
 
-    if (selectedCategory !== 'all') {
-      filtered = filtered.filter(
-        (product) => product.category === selectedCategory
-      );
-    }
-
-    setFilteredProducts(filtered);
-
-    const grouped = filtered.reduce((acc: GroupedProducts, product) => {
-      const category = product.category || 'Other';
-      if (!acc[category]) {
-        acc[category] = [];
-      }
-      acc[category].push(product);
-      return acc;
-    }, {});
-
-    setGroupedProducts(grouped);
+  const computeTotalStock = (p: Product) => {
+    if (p.variants && p.variants.length) return p.variants.reduce((s, v) => s + (v.stock_quantity || 0), 0);
+    return p.stock_quantity || 0;
   };
 
-  const updateQuantity = (productId: string, change: number) => {
-    setQuantities((prev) => ({
-      ...prev,
-      [productId]: Math.max(1, (prev[productId] || 1) + change)
-    }));
-  };
+  const applyFilters = () => {
+    let out = [...products];
 
-  const handleBuyNow = async (product: Product) => {
-    if (isAuthenticated) {
-      try {
-        await addToCart(product.id, quantities[product.id] || 1);
-        await refreshCart();
-        navigate('/checkout');
-      } catch (error) {
-        toast({
-          title: 'Error',
-          description: 'Failed to process purchase. Please try again.',
-          variant: 'destructive'
-        });
-      }
-    } else {
-      navigate('/checkout', {
-        state: {
-          guestCheckout: true,
-          product: product,
-          quantity: quantities[product.id] || 1
-        }
-      });
+    // search
+    if (searchTerm.trim()) {
+      const q = searchTerm.toLowerCase();
+      out = out.filter((p) => p.name.toLowerCase().includes(q) || (p.description && p.description.toLowerCase().includes(q)));
     }
+
+    // category
+    if (selectedCategory !== 'all') out = out.filter((p) => (p.category || '') === selectedCategory);
+
+    // brands
+    if (selectedBrands.length > 0) out = out.filter((p) => selectedBrands.includes(p.seller || ''));
+
+    // in stock
+    if (inStockOnly) out = out.filter((p) => computeTotalStock(p) > 0);
+
+    // price range (consider offer price if present)
+    out = out.filter((p) => {
+      const price = p.offer_price && p.offer_price < p.price ? p.offer_price : p.price;
+      return price >= priceRange[0] && price <= priceRange[1];
+    });
+
+    // sort
+    switch (sortBy) {
+      case 'new':
+        out.sort((a, b) => 0 - (a.id < b.id ? -1 : 1)); // best-effort newness (relies on created_at ideally)
+        break;
+      case 'price_low':
+        out.sort((a, b) => (a.offer_price || a.price) - (b.offer_price || b.price));
+        break;
+      case 'price_high':
+        out.sort((a, b) => (b.offer_price || b.price) - (a.offer_price || a.price));
+        break;
+      case 'rating':
+        out.sort((a, b) => (b.rating || 0) - (a.rating || 0));
+        break;
+      default:
+        // popular - keep server order or sort by rating+stock
+        out.sort((a, b) => ((b.rating || 0) - (a.rating || 0)));
+    }
+
+    // pagination
+    setFiltered(out);
   };
 
-  const handleAddToCart = async (product: Product) => {
+  const paginated = useMemo(() => {
+    const start = (page - 1) * PAGE_SIZE;
+    return filtered.slice(start, start + PAGE_SIZE);
+  }, [filtered, page]);
+
+  const toggleBrand = (brand: string) => {
+    setSelectedBrands((prev) => prev.includes(brand) ? prev.filter((b) => b !== brand) : [...prev, brand]);
+    setPage(1);
+  };
+
+  const clearAllFilters = () => {
+    setSearchTerm('');
+    setSelectedCategory('all');
+    setSelectedBrands([]);
+    setPriceRange([0, 10000]);
+    setInStockOnly(false);
+    setSortBy('popular');
+    setPage(1);
+  };
+
+  const handleAddToCart = async (p: Product, qty = 1) => {
     try {
-      await addToCart(product.id, quantities[product.id] || 1);
-      toast({
-        title: 'Added to cart',
-        description: `${quantities[product.id] || 1} × ${product.name} added`
-      });
-    } catch (error) {
-      toast({
-        title: 'Error',
-        description: 'Failed to add to cart.',
-        variant: 'destructive'
-      });
+      await addToCart(p.id, qty);
+      await refreshCart();
+      toast({ title: 'Added to cart', description: `${p.name} added`, variant: 'default' });
+    } catch (err) {
+      toast({ title: 'Add to cart failed', description: 'Please try again', variant: 'destructive' });
     }
   };
 
-  const getCategories = () => {
-    const cats = Array.from(
-      new Set(products.map((p) => p.category).filter(Boolean))
-    );
-    return cats.map((cat) => ({
-      value: cat!,
-      label: cat!
-    }));
+  const handleBuyNow = async (p: Product) => {
+    try {
+      await addToCart(p.id, 1);
+      await refreshCart();
+      navigate('/checkout');
+    } catch (err) {
+      toast({ title: 'Purchase failed', description: 'Please try again', variant: 'destructive' });
+    }
   };
 
-  const renderProductCard = (product: Product) => {
-    // Determine display price
-    const displayPrice = product.offer_price && product.offer_price < product.price
-      ? product.offer_price
-      : product.price;
-
-    // Compute total stock
-    const totalStock = product.variants && product.variants.length > 0
-      ? product.variants.reduce((sum, v) => sum + (v.stock_quantity || 0), 0)
-      : product.stock_quantity || 0;
-
-    const lowStock = totalStock > 0 && totalStock < 10;
-
-    // Variant info
-    const sizes = product.variants
-      ? Array.from(new Set(product.variants.map((v) => v.size).filter(Boolean)))
-      : [];
-    const colors = product.variants
-      ? Array.from(new Set(product.variants.map((v) => v.color).filter(Boolean)))
-      : [];
-
-    return (
-      <div key={product.id} className="bg-white rounded-xl border border-blue-100 shadow-md hover:shadow-lg hover:-translate-y-1 transition-all duration-300">
-        <div className="aspect-square overflow-hidden">
-          <img
-            src={product.image_url || '/placeholder.svg'}
-            alt={product.name}
-            className="w-full h-full object-cover transition-transform duration-500 hover:scale-105"
-          />
-        </div>
-        <div className="p-4">
-          <h3 className="text-blue-900 text-lg font-semibold mb-1 line-clamp-1">{product.name}</h3>
-          <p className="text-gray-600 text-sm line-clamp-2 mb-2">{product.description || 'No description available'}</p>
-
-          {/* Variant info */}
-          { (sizes.length > 0 || colors.length > 0) && (
-            <div className="text-xs text-blue-700 mb-2">
-              { sizes.length > 0 && <p>Sizes: {sizes.join(', ')}</p> }
-              { colors.length > 0 && <p>Colors: {colors.join(', ')}</p> }
-            </div>
-          ) }
-
-          {/* Stock + price */}
-          <div className="flex justify-between items-center mb-4">
-            <div>
-              <span className="text-xl font-bold text-blue-800">₹{displayPrice}</span>
-              {product.offer_price && product.offer_price < product.price && (
-                <span className="text-sm line-through text-gray-400 ml-2">₹{product.price}</span>
-              )}
-            </div>
-            <span className={`text-xs font-medium ${
-              totalStock === 0 ? 'text-red-600'
-              : lowStock ? 'text-orange-500 animate-pulse'
-              : 'text-gray-500'
-            }`}>
-              { totalStock === 0
-                ? 'Out of Stock'
-                : lowStock
-                ? `Only ${totalStock} left!`
-                : `Stock: ${totalStock}` }
-            </span>
-          </div>
-
-          {/* Quantity */}
-          <div className="flex items-center justify-center space-x-2 mb-4">
-            <Button variant="outline" size="sm" onClick={() => updateQuantity(product.id, -1)} disabled={quantities[product.id] <= 1} className="h-8 w-8 p-0 border-blue-300 hover:bg-blue-50 text-blue-700">
-              <Minus className="w-3 h-3" />
-            </Button>
-            <span className="text-sm font-medium px-2">{quantities[product.id] || 1}</span>
-            <Button variant="outline" size="sm" onClick={() => updateQuantity(product.id, 1)} className="h-8 w-8 p-0 border-blue-300 hover:bg-blue-50 text-blue-700">
-              <Plus className="w-3 h-3" />
-            </Button>
-          </div>
-
-          {/* Action Buttons */}
-          <div className="space-y-2">
-            <Button
-              onClick={() => handleBuyNow(product)}
-              className="w-full bg-gradient-to-r from-blue-600 to-blue-700 text-white hover:from-blue-700 hover:to-blue-800 text-sm py-2 transition-all duration-300 transform hover:scale-105"
-              disabled={totalStock === 0}
-            >
-              <ShoppingCart className="w-4 h-4 mr-2" />
-              { totalStock === 0 ? 'Out of Stock' : 'Buy Now' }
-            </Button>
-
-            <Button
-              onClick={() => handleAddToCart(product)}
-              variant="outline"
-              className="w-full text-sm py-2 border-blue-400 text-blue-700 hover:bg-blue-50 transition-all duration-300"
-              disabled={totalStock === 0}
-            >
-              Add to Cart
-            </Button>
-
-            <Button
-              onClick={() => navigate(`/product/${product.id}`)}
-              variant="ghost"
-              className="w-full text-sm py-2 text-blue-700 hover:bg-blue-50"
-            >
-              View Details
-            </Button>
-          </div>
-        </div>
-      </div>
-    );
+  // Try-on placeholder modal (simple alert for now)
+  const openTryOn = (product: Product) => {
+    alert(`Try-On (placeholder) for ${product.name}. Integrate 3D/AR try-on SDK here.`);
   };
 
   return (
     <Layout>
       <CartSidebar isOpen={cartOpen} onClose={() => setCartOpen(false)} />
 
+      {/* Floating cart button */}
       <Button
         onClick={() => setCartOpen(true)}
-        className="fixed bottom-6 right-6 z-40 rounded-full h-14 w-14 bg-gradient-to-r from-blue-600 to-blue-800 text-white shadow-xl transition-all duration-300 transform hover:scale-110"
+        className="fixed bottom-6 right-6 z-40 rounded-full h-14 w-14 bg-gradient-to-r from-blue-600 to-blue-800 text-white shadow-xl"
       >
         <ShoppingCart className="h-6 w-6" />
-        { cartCount > 0 && (
-          <span className="absolute -top-2 -right-2 bg-blue-500 text-white text-xs rounded-full h-6 w-6 flex items-center justify-center animate-pulse">
-            {cartCount}
-          </span>
-        ) }
+        {cartCount > 0 && <span className="absolute -top-2 -right-2 bg-blue-500 text-white text-xs rounded-full h-6 w-6 flex items-center justify-center">{cartCount}</span>}
       </Button>
 
-      {/* Hero Section */}
-      <section className="relative py-20 bg-gradient-to-r from-blue-700 via-blue-800 to-blue-900 text-blue-50">
-        <div className="absolute inset-0 bg-blue-700/10 backdrop-blur-sm"></div>
-        <div className="relative z-10 max-w-7xl mx-auto px-4 text-center">
-          <h1 className="text-5xl md:text-6xl font-extrabold mb-6 tracking-tight">
-            Our Products
-          </h1>
-          <p className="text-xl md:text-2xl max-w-2xl mx-auto mb-8 text-blue-100">
-            Discover fresh, flavorful, and authentic selections — straight from our kitchen.
-          </p>
-        </div>
-      </section>
-
-      {/* Search & Filter */}
-      <section className="py-10 bg-blue-50 border-y border-blue-100 shadow-inner">
-        <div className="max-w-7xl mx-auto px-4 flex flex-col md:flex-row items-center justify-between gap-6">
-          <div className="relative w-full max-w-md">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-blue-500 h-4 w-4" />
-            <Input
-              type="text"
-              placeholder="Search fresh products..."
-              value={searchTerm}
-              onChange={(e) => setSearchTerm(e.target.value)}
-              className="pl-10 pr-4 py-3 w-full border border-blue-300 rounded-lg shadow-sm focus:ring-2 focus:ring-blue-600 focus:border-transparent"
-            />
+      {/* Sticky top search + sorting bar */}
+      <div className="sticky top-16 z-30 bg-white border-b border-blue-50">
+        <div className="max-w-7xl mx-auto px-4 py-4 flex flex-col md:flex-row items-center gap-4 justify-between">
+          <div className="flex items-center gap-3 w-full md:w-1/2">
+            <Search className="w-5 h-5 text-blue-500" />
+            <Input value={searchTerm} onChange={(e) => { setSearchTerm(e.target.value); setPage(1); }} placeholder="Search frames, sunglasses, brands..." className="w-full" />
           </div>
 
-          <div className="flex items-center gap-3 text-blue-800">
-            <Filter className="h-4 w-4" />
-            <span className="font-medium text-sm">Filter by:</span>
-            <Select value={selectedCategory} onValueChange={setSelectedCategory}>
-              <SelectTrigger className="w-48 border-blue-300 focus:ring-blue-600">
-                <SelectValue placeholder="All Categories" />
+          <div className="flex items-center gap-3">
+            <Select value={sortBy} onValueChange={(v: any) => { setSortBy(v); setPage(1); }}>
+              <SelectTrigger className="w-48">
+                <SelectValue placeholder="Sort by" />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="all">All Categories</SelectItem>
-                { getCategories().map((category) => (
-                  <SelectItem key={category.value} value={category.value}>
-                    {category.label}
-                  </SelectItem>
-                )) }
+                <SelectItem value="popular">Popular</SelectItem>
+                <SelectItem value="new">Newest</SelectItem>
+                <SelectItem value="price_low">Price: Low to High</SelectItem>
+                <SelectItem value="price_high">Price: High to Low</SelectItem>
+                <SelectItem value="rating">Top Rated</SelectItem>
               </SelectContent>
             </Select>
+
+            <button onClick={() => setExpandedFilters((s) => !s)} className="flex items-center gap-2 text-blue-700 bg-blue-50 px-3 py-2 rounded">
+              <Filter className="w-4 h-4" /><span className="text-sm font-medium">{expandedFilters ? 'Hide Filters' : 'Show Filters'}</span>
+            </button>
           </div>
         </div>
-      </section>
+      </div>
 
-      {/* Products Section */}
-      <section className="py-16 bg-white">
-        <div className="max-w-7xl mx-auto px-4">
-          { loading ? (
-            <div className="flex justify-center items-center py-16">
-              <Loader2 className="h-8 w-8 animate-spin text-blue-600" />
-              <span className="ml-2 text-blue-700">Loading products...</span>
+      <div className="max-w-7xl mx-auto px-4 py-8 grid grid-cols-1 lg:grid-cols-4 gap-6">
+        {/* Filters Sidebar */}
+        {expandedFilters && (
+          <aside className="col-span-1 bg-white p-4 rounded-lg border border-blue-50 shadow-sm">
+            <div className="flex items-center justify-between mb-4">
+              <h4 className="font-semibold">Filters</h4>
+              <button className="text-sm text-blue-600" onClick={clearAllFilters}>Clear</button>
             </div>
-          ) : Object.keys(groupedProducts).length > 0 ? (
-            <>
-              <div className="text-center mb-12">
-                <h2 className="text-3xl font-bold text-blue-700 mb-4">
-                  Available Products
-                </h2>
-                <p className="text-blue-700 mb-4 max-w-2xl mx-auto">
-                  Choose from our selection of {filteredProducts.length} premium products
-                </p>
-              </div>
 
-              { Object.entries(groupedProducts).map(([category, categoryProducts]) => (
-                <div key={category} className="mb-16">
-                  <div className="flex items-center mb-8">
-                    <h3 className="text-2xl font-bold bg-gradient-to-r from-blue-700 to-blue-500 bg-clip-text text-transparent">{category}</h3>
-                    <div className="flex-1 h-px bg-gradient-to-r from-blue-300 to-transparent ml-4"></div>
-                    <span className="text-sm text-blue-600 ml-4">{categoryProducts.length} items</span>
-                  </div>
-                  <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-6 md:gap-8">
-                    {categoryProducts.map(renderProductCard)}
-                  </div>
-                </div>
-              )) }
-            </>
-          ) : (
+            <div className="mb-4">
+              <label className="block text-sm font-medium mb-2">Category</label>
+              <div className="flex flex-col gap-2">
+                <button className={`text-left text-sm p-2 rounded ${selectedCategory === 'all' ? 'bg-blue-50 font-semibold' : 'hover:bg-blue-50'}`} onClick={() => setSelectedCategory('all')}>All</button>
+                {uniqueCategories.map((cat) => (
+                  <button key={cat} className={`text-left text-sm p-2 rounded ${selectedCategory === cat ? 'bg-blue-50 font-semibold' : 'hover:bg-blue-50'}`} onClick={() => { setSelectedCategory(cat); setPage(1); }}>
+                    {cat}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            <div className="mb-4">
+              <label className="block text-sm font-medium mb-2">Brands</label>
+              <div className="flex flex-col max-h-48 overflow-auto gap-2">
+                {uniqueBrands.map((b) => (
+                  <label key={b} className="inline-flex items-center gap-2 text-sm">
+                    <input type="checkbox" checked={selectedBrands.includes(b)} onChange={() => toggleBrand(b)} />
+                    <span className="truncate">{b}</span>
+                  </label>
+                ))}
+                {uniqueBrands.length === 0 && <div className="text-sm text-gray-500">No brands</div>}
+              </div>
+            </div>
+
+            <div className="mb-4">
+              <label className="block text-sm font-medium mb-2">Price Range (₹)</label>
+              <div className="flex items-center gap-2">
+                <input type="number" value={priceRange[0]} onChange={(e) => setPriceRange([Number(e.target.value || 0), priceRange[1]])} className="w-24 p-2 border rounded" />
+                <span className="text-sm">—</span>
+                <input type="number" value={priceRange[1]} onChange={(e) => setPriceRange([priceRange[0], Number(e.target.value || 10000)])} className="w-24 p-2 border rounded" />
+              </div>
+            </div>
+
+            <div className="mb-4">
+              <label className="inline-flex items-center gap-2">
+                <input type="checkbox" checked={inStockOnly} onChange={(e) => setInStockOnly(e.target.checked)} />
+                <span className="text-sm">In-stock only</span>
+              </label>
+            </div>
+
+            <div className="mt-6">
+              <Button onClick={() => { setPage(1); applyFilters(); }} className="w-full">Apply Filters</Button>
+            </div>
+          </aside>
+        )}
+
+        {/* Products grid */}
+        <main className={`${expandedFilters ? 'lg:col-span-3' : 'lg:col-span-4'}`}>
+          {loading ? (
+            <div className="flex items-center justify-center py-24">
+              <Loader2 className="animate-spin h-8 w-8 text-blue-600" />
+              <span className="ml-3 text-blue-700">Loading products...</span>
+            </div>
+          ) : filtered.length === 0 ? (
             <div className="text-center py-24">
-              <Package className="h-20 w-20 text-blue-300 mx-auto mb-6" />
-              <h3 className="text-3xl font-bold text-blue-700 mb-4">No Products Found</h3>
-              <p className="text-blue-700 mb-8 max-w-md mx-auto">
-                Try adjusting your search or filter — we’re always adding new items!
-              </p>
-              <Button
-                onClick={() => {
-                  setSearchTerm('');
-                  setSelectedCategory('all');
-                }}
-                className="bg-gradient-to-r from-blue-600 to-blue-700 text-white hover:from-blue-700 hover:to-blue-800"
-              >
-                View All Products
-              </Button>
+              <h3 className="text-2xl font-bold text-blue-700 mb-2">No products found</h3>
+              <p className="text-sm text-gray-600 mb-6">Try removing filters or expanding the price range.</p>
+              <Button onClick={clearAllFilters}>Reset Filters</Button>
             </div>
-          )}
+          ) : (
+            <>
+              <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-6">
+                {paginated.map((p) => {
+                  const displayPrice = p.offer_price && p.offer_price < p.price ? p.offer_price : p.price;
+                  const totalStock = computeTotalStock(p);
+                  const colors = p.variants ? Array.from(new Set(p.variants.map((v) => v.color).filter(Boolean))) : [];
 
-          { filteredProducts.length > 0 && (
-            <div className="mt-20 text-center">
-              <div className="bg-gradient-to-br from-blue-50 to-blue-100 border border-blue-200 p-8 rounded-2xl shadow-lg max-w-md mx-auto">
-                <h3 className="text-2xl font-bold text-blue-800 mb-4">More Products Coming Soon!</h3>
-                <p className="text-blue-700 mb-6">
-                  We’re constantly adding new products — stay tuned!
-                </p>
+                  return (
+                    <div key={p.id} className="bg-white rounded-xl border border-blue-100 shadow-sm hover:shadow-lg transition overflow-hidden">
+                      <div className="relative aspect-square">
+                        <img src={p.image_url || (p.variants && p.variants[0]?.image_url) || '/placeholder.svg'} alt={p.name} className="w-full h-full object-cover" />
+                        {/* quick try-on */}
+                        <button onClick={() => openTryOn(p)} className="absolute top-3 left-3 bg-white/90 text-blue-800 px-2 py-1 rounded text-xs font-medium">Try On</button>
+                        {/* Seller badge */}
+                        {p.seller && <div className="absolute top-3 right-3 bg-white/90 px-2 py-1 rounded text-xs">{p.seller}</div>}
+                      </div>
+
+                      <div className="p-3">
+                        <h4 className="text-sm font-semibold text-blue-900 line-clamp-2">{p.name}</h4>
+                        <div className="flex items-center gap-2 mt-1">
+                          <div className="text-blue-800 font-bold">₹{displayPrice}</div>
+                          {p.offer_price && p.offer_price < p.price && <div className="text-xs line-through text-gray-400">₹{p.price}</div>}
+                          {p.rating && <div className="ml-auto flex items-center gap-1 text-yellow-500"><Star className="w-4 h-4" /> <span className="text-sm font-medium">{p.rating}</span></div>}
+                        </div>
+
+                        <p className="text-xs text-gray-600 mt-2 line-clamp-2">{p.description || 'Premium eyewear'}</p>
+
+                        {/* color swatches */}
+                        <div className="flex items-center gap-2 mt-3">
+                          {colors.length > 0 ? colors.slice(0,6).map((c, i) => (
+                            <div key={i} title={c} className="w-6 h-6 rounded-full border" style={{ background: c || '#ddd' }} />
+                          )) : <div className="text-xs text-gray-400">No color variants</div>}
+                        </div>
+
+                        <div className="mt-3 grid grid-cols-3 gap-2">
+                          <Button size="sm" onClick={() => handleAddToCart(p, 1)} className="col-span-2 bg-gradient-to-r from-blue-600 to-blue-700 text-white">Add</Button>
+                          <Button size="sm" variant="ghost" onClick={() => handleBuyNow(p)}>Buy</Button>
+                        </div>
+
+                        <div className="mt-2 text-xs text-gray-500">
+                          {totalStock === 0 ? <span className="text-red-600">Out of stock</span> : <span>{totalStock} in stock</span>}
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })}
               </div>
-            </div>
+
+              {/* Pagination */}
+              <div className="mt-8 flex items-center justify-between">
+                <div className="text-sm text-gray-600">Showing {(page - 1) * PAGE_SIZE + 1} - {Math.min(page * PAGE_SIZE, filtered.length)} of {filtered.length} products</div>
+                <div className="flex items-center gap-2">
+                  <button onClick={() => setPage((p) => Math.max(1, p - 1))} disabled={page === 1} className="px-3 py-2 bg-blue-50 rounded">Prev</button>
+                  <div className="px-3 py-2 rounded bg-white border">{page}</div>
+                  <button onClick={() => setPage((p) => p + 1)} disabled={page * PAGE_SIZE >= filtered.length} className="px-3 py-2 bg-blue-50 rounded">Next</button>
+                </div>
+              </div>
+            </>
           )}
-        </div>
-      </section>
+        </main>
+      </div>
     </Layout>
   );
 };

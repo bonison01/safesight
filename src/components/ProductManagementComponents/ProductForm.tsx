@@ -21,33 +21,34 @@ import {
 import { X, Save } from 'lucide-react';
 import ImageUpload from './ImageUpload';
 
-// Helper arrays for variants (you can adjust as needed)
 const sizes = ['S', 'M', 'L', 'XL'];
 const colors = ['Red', 'Green', 'Blue', 'Black', 'White'];
 
+// ENUM-safe database values
 const categories = [
-  { value: 'chicken', label: 'Chicken' },
-  { value: 'red_meat', label: 'Red Meat' },
-  { value: 'chilli_condiments', label: 'Chilli & Condiments' },
+  { value: 'eyeglasses', label: 'Eyeglasses' },
+  { value: 'sunglasses', label: 'Sunglasses' },
+  { value: 'kids', label: 'Kids' },
+  { value: 'lens_care', label: 'Lens Care' },
+  { value: 'contact_lens', label: 'Contact Lens' },
   { value: 'other', label: 'Other' },
 ];
 
-// ✅ Variant interface (used for handling variants)
 export interface VariantInput {
   id?: string;
   color?: string | null;
   size?: string | null;
-  price?: number | null;
   stock_quantity?: number | null;
   image_url?: string | null;
+  price?: number | null | undefined; // allow assignments, even if unused
 }
 
-// ✅ Props interface
+
 export interface ProductFormProps {
-  product: Partial<Product>; // ✅ now allows missing fields (e.g., id)
+  product: Partial<Product>;
   images: string[];
   variants: VariantInput[];
-  onProductChange: React.Dispatch<React.SetStateAction<Partial<Product>>>; // ✅ match above
+  onProductChange: React.Dispatch<React.SetStateAction<Partial<Product>>>;
   onImagesChange: React.Dispatch<React.SetStateAction<string[]>>;
   onVariantsChange: React.Dispatch<React.SetStateAction<VariantInput[]>>;
   onSave: () => Promise<void>;
@@ -55,7 +56,6 @@ export interface ProductFormProps {
   isEditing: boolean;
   saving?: boolean;
 }
-
 
 const ProductForm: React.FC<ProductFormProps> = ({
   product,
@@ -69,18 +69,19 @@ const ProductForm: React.FC<ProductFormProps> = ({
   isEditing,
   saving = false,
 }) => {
-  // ✅ Variant management handlers
   const addVariant = () => {
-    const newVariant: VariantInput = {
-      id: Date.now().toString(),
-      size: sizes[0],
-      color: colors[0],
-      price: product.price,
-      stock_quantity: 0,
-      image_url: null,
-    };
-    onVariantsChange([...variants, newVariant]);
+  const newVariant: VariantInput = {
+    id: Date.now().toString(),
+    size: sizes[0],
+    color: colors[0],
+    stock_quantity: 0,
+    price: null,
+    image_url: null,
   };
+  onVariantsChange([...variants, newVariant]);
+};
+
+
 
   const updateVariant = (id: string, updatedFields: Partial<VariantInput>) => {
     onVariantsChange(
@@ -118,7 +119,7 @@ const ProductForm: React.FC<ProductFormProps> = ({
 
           <CardContent>
             <div className="grid gap-4">
-              {/* ✅ Image Upload */}
+
               <ImageUpload
                 images={images}
                 onImagesChange={onImagesChange}
@@ -126,7 +127,6 @@ const ProductForm: React.FC<ProductFormProps> = ({
                 maxSizePerImageMB={2}
               />
 
-              {/* ✅ Product Fields */}
               <div>
                 <Label htmlFor="name">Product Name</Label>
                 <Input
@@ -187,6 +187,7 @@ const ProductForm: React.FC<ProductFormProps> = ({
                 />
               </div>
 
+              {/* ENUM-safe category */}
               <div>
                 <Label htmlFor="category">Category</Label>
                 <Select
@@ -194,7 +195,7 @@ const ProductForm: React.FC<ProductFormProps> = ({
                   onValueChange={(value) =>
                     onProductChange({
                       ...product,
-                      category: value as Product['category'],
+                      category: value,
                     })
                   }
                 >
@@ -211,95 +212,86 @@ const ProductForm: React.FC<ProductFormProps> = ({
                 </Select>
               </div>
 
-              {/* ✅ Variants Section */}
               <div className="space-y-4">
-                <Label>Variants</Label>
+  <Label>Variants</Label>
 
-                {variants.length === 0 && (
-                  <p className="text-sm text-gray-500">
-                    No variants added yet. Click “Add Variant” to create one.
-                  </p>
-                )}
+  {variants.length === 0 && (
+    <p className="text-sm text-gray-500">
+      No variants added yet.
+    </p>
+  )}
 
-                {variants.map((variant) => (
-                  <div
-                    key={variant.id}
-                    className="grid grid-cols-5 gap-2 items-center border p-2 rounded-md"
-                  >
-                    <Select
-                      value={variant.size || ''}
-                      onValueChange={(value) =>
-                        updateVariant(variant.id!, { size: value })
-                      }
-                    >
-                      <SelectTrigger>
-                        <SelectValue placeholder="Size" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {sizes.map((size) => (
-                          <SelectItem key={size} value={size}>
-                            {size}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
+  {variants.map((variant) => (
+    <div
+      key={variant.id}
+      className="grid grid-cols-4 gap-2 items-center border p-2 rounded-md"
+    >
+      <Select
+        value={variant.size || ''}
+        onValueChange={(value) =>
+          updateVariant(variant.id!, { size: value })
+        }
+      >
+        <SelectTrigger>
+          <SelectValue placeholder="Size" />
+        </SelectTrigger>
+        <SelectContent>
+          {sizes.map((size) => (
+            <SelectItem key={size} value={size}>
+              {size}
+            </SelectItem>
+          ))}
+        </SelectContent>
+      </Select>
 
-                    <Select
-                      value={variant.color || ''}
-                      onValueChange={(value) =>
-                        updateVariant(variant.id!, { color: value })
-                      }
-                    >
-                      <SelectTrigger>
-                        <SelectValue placeholder="Color" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {colors.map((color) => (
-                          <SelectItem key={color} value={color}>
-                            {color}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
+      <Select
+        value={variant.color || ''}
+        onValueChange={(value) =>
+          updateVariant(variant.id!, { color: value })
+        }
+      >
+        <SelectTrigger>
+          <SelectValue placeholder="Color" />
+        </SelectTrigger>
+        <SelectContent>
+          {colors.map((color) => (
+            <SelectItem key={color} value={color}>
+              {color}
+            </SelectItem>
+          ))}
+        </SelectContent>
+      </Select>
 
-                    <Input
-                      type="number"
-                      placeholder="Price"
-                      value={variant.price ?? ''}
-                      onChange={(e) =>
-                        updateVariant(variant.id!, {
-                          price: parseFloat(e.target.value) || 0,
-                        })
-                      }
-                    />
+      <div>
+        <Label className="text-xs">Stock Quantity</Label>
+        <Input
+          type="number"
+          placeholder="Stock quantity"
+          value={variant.stock_quantity ?? ''}
+          onChange={(e) =>
+            updateVariant(variant.id!, {
+              stock_quantity: parseInt(e.target.value) || 0,
+            })
+          }
+        />
+      </div>
 
-                    <Input
-                      type="number"
-                      placeholder="Stock"
-                      value={variant.stock_quantity ?? ''}
-                      onChange={(e) =>
-                        updateVariant(variant.id!, {
-                          stock_quantity: parseInt(e.target.value) || 0,
-                        })
-                      }
-                    />
+      <Button
+        variant="destructive"
+        size="sm"
+        onClick={() => removeVariant(variant.id!)}
+      >
+        Remove
+      </Button>
+    </div>
+  ))}
 
-                    <Button
-                      variant="destructive"
-                      size="sm"
-                      onClick={() => removeVariant(variant.id!)}
-                    >
-                      Remove
-                    </Button>
-                  </div>
-                ))}
+  <Button variant="outline" onClick={addVariant}>
+    + Add Variant
+  </Button>
+</div>
 
-                <Button variant="outline" onClick={addVariant}>
-                  + Add Variant
-                </Button>
-              </div>
 
-              {/* ✅ Save Button */}
               <Button onClick={onSave} disabled={saving}>
                 <Save className="h-4 w-4 mr-2" />
                 {saving

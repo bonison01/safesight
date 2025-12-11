@@ -16,6 +16,7 @@ type InvoiceRow = Tables<"invoices">;
 export type PaymentRow = {
   id: string;
   invoice_id?: string | null;
+  customer_name: string | null;
   payment_date: string;
   amount: number;
   payment_method?: string | null;
@@ -418,7 +419,7 @@ export default function DailyIncomePanel({
               <th className="p-2">Date</th>
               <th className="p-2">Total Invoice</th>
               <th className="p-2">Total Paid</th>
-              <th className="p-2">Total Overdue</th>
+              <th className="p-2">Unpaid Bill(Today)</th>
               <th className="p-2">Old Paid Overdue</th>
               <th className="p-2">Collectable</th>
               <th className="p-2">Actions</th>
@@ -543,7 +544,7 @@ export default function DailyIncomePanel({
 
                               return (
                                 <tr key={r.id} className="border-b">
-                                  <td className="p-2">{r.invoice_id ?? "-"}</td>
+                                  <td className="p-2">{r.customer_name ?? "-"}</td>
                                   <td className="p-2">₹{r.amount.toFixed(2)}</td>
                                   <td className="p-2">
                                     {r.overdue_amount > 0

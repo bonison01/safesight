@@ -8,7 +8,7 @@ import { supabase } from "@/integrations/supabase/client";
 import type { Tables } from "@/integrations/supabase/types";
 
 /* ===============================================
-   Types
+  Types
 =============================================== */
 
 type InvoiceRow = Tables<"invoices">;
@@ -21,6 +21,7 @@ export type PaymentRow = {
   amount: number;
   payment_method?: string | null;
   invoice_date?: string | null;
+  invoice_customer_name?: string | null;
 };
 
 type MergedRow = PaymentRow & {
@@ -39,7 +40,7 @@ export type DailyIncomePanelProps = {
 };
 
 /* ===============================================
-   Utility fns
+  Utils
 =============================================== */
 
 type MethodGroup = "ALL" | "UPI" | "CASH" | "BANK" | "OTHER";
@@ -71,7 +72,7 @@ function toYMD(x?: string | null): string {
 }
 
 /* ===============================================
-   Component
+  Component
 =============================================== */
 
 export default function DailyIncomePanel({
@@ -89,8 +90,10 @@ export default function DailyIncomePanel({
 
   useEffect(() => {
     let mounted = true;
+
     (async () => {
       const res = await supabase.from("invoices").select("*");
+
       if (!mounted) return;
 
       if (res.error) {
@@ -101,6 +104,7 @@ export default function DailyIncomePanel({
 
       setInvoices((res.data ?? []) as InvoiceRow[]);
     })();
+
     return () => {
       mounted = false;
     };
@@ -120,30 +124,65 @@ export default function DailyIncomePanel({
     return { byId, byNumber };
   }, [invoices]);
 
-  /* -------------------------------- Merge payments + invoice info -------------------------------- */
+  /* ============================================================
+     AUTO-GENERATE PAYMENT ROWS FOR NEW INVOICES WITH PAID_AMOUNT
+  ============================================================ */
+
+  const autoInvoicePayments = useMemo(() => {
+  return invoices
+    .filter((inv) => Number(inv.paid_amount ?? 0) > 0)
+    .map((inv) => ({
+      id: "invpay-" + inv.id,
+      invoice_id: inv.id,
+      customer_name: inv.customer_name ?? null,
+      payment_date: toYMD(inv.created_at),
+      amount: Number(inv.paid_amount ?? 0),
+
+      // FIX: invoice table has no payment_method column
+      payment_method: "cash",
+
+      invoice_date: toYMD(inv.created_at),
+      invoice_customer_name: inv.customer_name ?? null,
+    }));
+}, [invoices]);
+
+
+  /* ============================================================
+     FINAL PAYMENT LIST = dailyIncomeRows + autoInvoicePayments
+  ============================================================ */
+
+  const allPayments = useMemo(
+    () => [...dailyIncomeRows, ...autoInvoicePayments],
+    [dailyIncomeRows, autoInvoicePayments]
+  );
+
+  /* -------------------------------- Merge invoice info -------------------------------- */
 
   const mergedRows = useMemo<MergedRow[]>(() => {
-    return dailyIncomeRows.map((p) => {
+    return allPayments.map((p) => {
       const key = p.invoice_id ?? "";
       let inv = invoiceLookup.byId.get(key);
       if (!inv && key) inv = invoiceLookup.byNumber.get(key);
 
+      let invoice_created_at = inv?.created_at
+        ? toYMD(inv.created_at)
+        : toYMD(p.invoice_date);
+
       const invoice_total = inv ? Number(inv.grand_total ?? 0) : 0;
-      const invoice_created_at = inv ? toYMD(inv.created_at) : toYMD(p.invoice_date);
       const invoice_paid_amount = inv ? Number(inv.paid_amount ?? 0) : 0;
-      const overdue_amount = Math.max(invoice_total - invoice_paid_amount, 0);
 
       return {
         ...p,
         invoice_total,
         invoice_created_at,
         invoice_paid_amount,
-        overdue_amount,
+        overdue_amount: Math.max(invoice_total - invoice_paid_amount, 0),
+        invoice_customer_name: inv?.customer_name ?? p.customer_name,
       };
     });
-  }, [dailyIncomeRows, invoiceLookup]);
+  }, [allPayments, invoiceLookup]);
 
-  /* -------------------------------- Date filter for payment rows -------------------------------- */
+  /* -------------------------------- Filter by payment_date -------------------------------- */
 
   const filtered = useMemo(() => {
     return mergedRows.filter((r) => {
@@ -153,7 +192,7 @@ export default function DailyIncomePanel({
     });
   }, [mergedRows, incomeStart, incomeEnd]);
 
-  /* -------------------------------- Build Invoice totals by created date -------------------------------- */
+  /* -------------------------------- Invoice totals by creation date -------------------------------- */
 
   const invoicesByDate = useMemo(() => {
     const map: Record<string, { totalInvoice: number; totalOverdue: number }> = {};
@@ -162,9 +201,7 @@ export default function DailyIncomePanel({
       const d = toYMD(inv.created_at);
       if (!d) continue;
 
-      if (!map[d]) {
-        map[d] = { totalInvoice: 0, totalOverdue: 0 };
-      }
+      if (!map[d]) map[d] = { totalInvoice: 0, totalOverdue: 0 };
 
       const total = Number(inv.grand_total ?? 0);
       const paid = Number(inv.paid_amount ?? 0);
@@ -177,13 +214,15 @@ export default function DailyIncomePanel({
     return map;
   }, [invoices]);
 
-  /* -------------------------------- Summary -------------------------------- */
+  /* ============================================================
+     SUMMARY CALCULATION
+  ============================================================ */
 
   type SummaryRow = {
     date: string;
     totalInvoice: number;
     totalOverdue: number;
-    totalPaid: number;
+    todayPaid: number;
     totalOldOverduePaid: number;
     totalCollectable: number;
   };
@@ -191,33 +230,34 @@ export default function DailyIncomePanel({
   const summary = useMemo<SummaryRow[]>(() => {
     const map: Record<string, SummaryRow> = {};
 
-    // 1) From payments
     for (const r of filtered) {
-      const d = r.payment_date;
+      const payDate = toYMD(r.payment_date);
 
-      if (!map[d]) {
-        map[d] = {
-          date: d,
+      let invDate = toYMD(r.invoice_created_at);
+      if (!invDate) invDate = payDate;
+
+      if (!map[payDate]) {
+        map[payDate] = {
+          date: payDate,
           totalInvoice: 0,
           totalOverdue: 0,
-          totalPaid: 0,
+          todayPaid: 0,
           totalOldOverduePaid: 0,
           totalCollectable: 0,
         };
       }
 
-      const entry = map[d];
-      entry.totalPaid += r.amount;
+      const entry = map[payDate];
 
-      if (r.invoice_created_at && r.invoice_created_at < d) {
+      if (invDate === payDate) {
+        entry.todayPaid += r.amount;
+      } else if (invDate < payDate) {
         entry.totalOldOverduePaid += r.amount;
       }
 
-      entry.totalCollectable =
-        entry.totalPaid + entry.totalOldOverduePaid;
+      entry.totalCollectable = entry.todayPaid + entry.totalOldOverduePaid;
     }
 
-    // 2) From invoice creation dates
     for (const d in map) {
       if (invoicesByDate[d]) {
         map[d].totalInvoice = invoicesByDate[d].totalInvoice;
@@ -229,11 +269,12 @@ export default function DailyIncomePanel({
   }, [filtered, invoicesByDate]);
 
   /* -------------------------------- Footer totals -------------------------------- */
+
   const footerTotals = useMemo(() => {
     return summary.reduce(
       (acc, s) => {
         acc.invoice += s.totalInvoice;
-        acc.paid += s.totalPaid;
+        acc.paid += s.todayPaid;
         acc.overdue += s.totalOverdue;
         acc.oldOverdue += s.totalOldOverduePaid;
         acc.collectable += s.totalCollectable;
@@ -243,15 +284,13 @@ export default function DailyIncomePanel({
     );
   }, [summary]);
 
-  /* -------------------------------- Toggles + Filters -------------------------------- */
+  /* -------------------------------- UI Helpers -------------------------------- */
 
   const toggleExpand = (d: string) =>
     setExpandedDates((prev) => ({ ...prev, [d]: !prev[d] }));
 
   const setDateFilter = (date: string, group: MethodGroup) =>
     setDateFilters((prev) => ({ ...prev, [date]: group }));
-
-  /* -------------------------------- CSV Export -------------------------------- */
 
   function rowsToCsv(rows: MergedRow[]): string {
     const headers = [
@@ -309,19 +348,17 @@ export default function DailyIncomePanel({
     URL.revokeObjectURL(url);
   }
 
-  /* -------------------------------- Presets -------------------------------- */
-
-  const setPreset = (p: "today" | "yesterday" | "week" | "month") => {
+  const setPreset = (preset: "today" | "yesterday" | "week" | "month") => {
     const now = new Date();
 
-    if (p === "today") {
+    if (preset === "today") {
       const t = toYMD(now.toISOString());
       setIncomeStart(t);
       setIncomeEnd(t);
       return;
     }
 
-    if (p === "yesterday") {
+    if (preset === "yesterday") {
       const y = new Date(now);
       y.setDate(now.getDate() - 1);
       const d = toYMD(y.toISOString());
@@ -330,7 +367,7 @@ export default function DailyIncomePanel({
       return;
     }
 
-    if (p === "week") {
+    if (preset === "week") {
       const day = now.getDay();
       const diff = (day + 6) % 7;
       const start = new Date(now);
@@ -343,7 +380,7 @@ export default function DailyIncomePanel({
       return;
     }
 
-    if (p === "month") {
+    if (preset === "month") {
       const start = new Date(now.getFullYear(), now.getMonth(), 1);
       const end = new Date(now.getFullYear(), now.getMonth() + 1, 0);
       setIncomeStart(toYMD(start.toISOString()));
@@ -352,8 +389,8 @@ export default function DailyIncomePanel({
   };
 
   /* ===============================================
-     RENDER
-=============================================== */
+     UI RENDER
+  ================================================ */
 
   return (
     <Card className="border shadow-sm">
@@ -362,7 +399,7 @@ export default function DailyIncomePanel({
       </CardHeader>
 
       <CardContent>
-        {/* Presets */}
+        {/* PRESETS */}
         <div className="flex gap-2 mb-4 flex-wrap">
           <Button size="sm" variant="outline" onClick={() => setPreset("today")}>
             Today
@@ -378,7 +415,7 @@ export default function DailyIncomePanel({
           </Button>
         </div>
 
-        {/* Date range */}
+        {/* DATE RANGE */}
         <div className="flex items-center gap-3 mb-5">
           <div className="flex items-center gap-2">
             <label className="text-xs">From</label>
@@ -418,7 +455,7 @@ export default function DailyIncomePanel({
             <tr>
               <th className="p-2">Date</th>
               <th className="p-2">Total Invoice</th>
-              <th className="p-2">Total Paid</th>
+              <th className="p-2">Today Paid Amount</th>
               <th className="p-2">Unpaid Bill(Today)</th>
               <th className="p-2">Old Paid Overdue</th>
               <th className="p-2">Collectable</th>
@@ -428,14 +465,18 @@ export default function DailyIncomePanel({
 
           <tbody>
             {summary.map((s) => {
-              const rowsForDay = mergedRows.filter((r) => r.payment_date === s.date);
+              const rowsForDay = mergedRows.filter(
+                (r) => r.payment_date === s.date
+              );
               const open = expandedDates[s.date] === true;
               const f = dateFilters[s.date] ?? "ALL";
 
               const visible =
                 f === "ALL"
                   ? rowsForDay
-                  : rowsForDay.filter((r) => methodToGroup(r.payment_method) === f);
+                  : rowsForDay.filter(
+                      (r) => methodToGroup(r.payment_method) === f
+                    );
 
               const counts = {
                 ALL: rowsForDay.length,
@@ -450,13 +491,27 @@ export default function DailyIncomePanel({
                   <tr className="border-b">
                     <td className="p-2">{s.date}</td>
                     <td className="p-2">₹{s.totalInvoice.toFixed(2)}</td>
-                    <td className="p-2">₹{s.totalPaid.toFixed(2)}</td>
+
+                    <td className="p-2 text-green-700 font-semibold">
+                      ₹{s.todayPaid.toFixed(2)}
+                    </td>
+
                     <td className="p-2">₹{s.totalOverdue.toFixed(2)}</td>
-                    <td className="p-2">₹{s.totalOldOverduePaid.toFixed(2)}</td>
-                    <td className="p-2 font-semibold">₹{s.totalCollectable.toFixed(2)}</td>
+
+                    <td className="p-2 text-blue-700 font-semibold">
+                      ₹{s.totalOldOverduePaid.toFixed(2)}
+                    </td>
+
+                    <td className="p-2 font-bold">
+                      ₹{s.totalCollectable.toFixed(2)}
+                    </td>
 
                     <td className="p-2 flex gap-2">
-                      <Button size="sm" variant="outline" onClick={() => toggleExpand(s.date)}>
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        onClick={() => toggleExpand(s.date)}
+                      >
                         {open ? "Hide ▲" : "Show ▼"}
                       </Button>
 
@@ -466,54 +521,26 @@ export default function DailyIncomePanel({
                     </td>
                   </tr>
 
-                  {/* EXPANDED */}
+                  {/* EXPANDED DETAIL TABLE */}
                   {open && (
                     <tr className="bg-gray-50 border-b">
                       <td colSpan={7} className="p-3">
-                        {/* FILTER BAR */}
                         <div className="flex justify-between mb-3">
                           <div className="flex gap-2 items-center text-sm">
                             <span className="text-xs text-gray-600">Filter:</span>
 
-                            <Button
-                              size="sm"
-                              variant={f === "ALL" ? "default" : "outline"}
-                              onClick={() => setDateFilter(s.date, "ALL")}
-                            >
-                              All ({counts.ALL})
-                            </Button>
-
-                            <Button
-                              size="sm"
-                              variant={f === "UPI" ? "default" : "outline"}
-                              onClick={() => setDateFilter(s.date, "UPI")}
-                            >
-                              UPI ({counts.UPI})
-                            </Button>
-
-                            <Button
-                              size="sm"
-                              variant={f === "CASH" ? "default" : "outline"}
-                              onClick={() => setDateFilter(s.date, "CASH")}
-                            >
-                              CASH ({counts.CASH})
-                            </Button>
-
-                            <Button
-                              size="sm"
-                              variant={f === "BANK" ? "default" : "outline"}
-                              onClick={() => setDateFilter(s.date, "BANK")}
-                            >
-                              BANK ({counts.BANK})
-                            </Button>
-
-                            <Button
-                              size="sm"
-                              variant={f === "OTHER" ? "default" : "outline"}
-                              onClick={() => setDateFilter(s.date, "OTHER")}
-                            >
-                              OTHER ({counts.OTHER})
-                            </Button>
+                            {(["ALL", "UPI", "CASH", "BANK", "OTHER"] as MethodGroup[]).map(
+                              (grp) => (
+                                <Button
+                                  key={grp}
+                                  size="sm"
+                                  variant={f === grp ? "default" : "outline"}
+                                  onClick={() => setDateFilter(s.date, grp)}
+                                >
+                                  {grp} ({counts[grp]})
+                                </Button>
+                              )
+                            )}
                           </div>
 
                           <div className="text-sm text-gray-600">
@@ -521,11 +548,11 @@ export default function DailyIncomePanel({
                           </div>
                         </div>
 
-                        {/* DETAIL TABLE */}
                         <table className="w-full text-xs border">
                           <thead className="bg-gray-200">
                             <tr>
                               <th className="p-2">Invoice</th>
+                              <th className="p-2">Invoice Date</th>
                               <th className="p-2">Amount</th>
                               <th className="p-2">Overdue</th>
                               <th className="p-2">Old Paid Overdue</th>
@@ -544,29 +571,54 @@ export default function DailyIncomePanel({
 
                               return (
                                 <tr key={r.id} className="border-b">
-                                  <td className="p-2">{r.customer_name ?? "-"}</td>
-                                  <td className="p-2">₹{r.amount.toFixed(2)}</td>
+                                  <td className="p-2">
+                                    <div className="font-medium">
+                                      {r.invoice_customer_name ??
+                                        r.customer_name ??
+                                        "-"}
+                                    </div>
+                                    <div className="text-[10px] text-gray-500">
+                                      #{r.invoice_id ?? "—"}
+                                    </div>
+                                  </td>
+
+                                  <td className="p-2">
+                                    {r.invoice_created_at ?? "-"}
+                                  </td>
+
+                                  <td className="p-2">
+                                    ₹{r.amount.toFixed(2)}
+                                  </td>
+
                                   <td className="p-2">
                                     {r.overdue_amount > 0
                                       ? `₹${r.overdue_amount.toFixed(2)}`
                                       : "-"}
                                   </td>
+
                                   <td className="p-2">
                                     {oldPaidOverdue > 0
                                       ? `₹${oldPaidOverdue.toFixed(2)}`
                                       : "-"}
                                   </td>
+
                                   <td className="p-2">
                                     {(r.payment_method ?? "").toUpperCase()}
                                   </td>
-                                  <td className="p-2">₹{r.invoice_total.toFixed(2)}</td>
+
+                                  <td className="p-2">
+                                    ₹{r.invoice_total.toFixed(2)}
+                                  </td>
                                 </tr>
                               );
                             })}
 
                             {visible.length === 0 && (
                               <tr>
-                                <td colSpan={6} className="p-3 text-center text-gray-500">
+                                <td
+                                  colSpan={7}
+                                  className="p-3 text-center text-gray-500"
+                                >
                                   No transactions match this filter
                                 </td>
                               </tr>
@@ -580,7 +632,7 @@ export default function DailyIncomePanel({
               );
             })}
 
-            {/* FOOTER TOTALS */}
+            {/* ===================== FOOTER TOTALS ===================== */}
             <tr className="bg-gray-900 text-white font-semibold">
               <td className="p-2">TOTAL</td>
               <td className="p-2">₹{footerTotals.invoice.toFixed(2)}</td>

@@ -1,4 +1,6 @@
 // src/components/admin/InvoiceArchiveTable.tsx
+// @ts-nocheck
+import { useState } from "react";
 import { Button } from "@/components/ui/button";
 
 export default function InvoiceArchiveTable({
@@ -8,6 +10,9 @@ export default function InvoiceArchiveTable({
   onOpenView,
   onStatusChange,
 }) {
+  // prevents double clicks on ANY invoice row
+  const [actionLoadingId, setActionLoadingId] = useState(null);
+
   return (
     <table className="w-full text-xs md:text-sm">
       <thead className="bg-gray-100 border-b text-left">
@@ -37,11 +42,24 @@ export default function InvoiceArchiveTable({
               <td className="p-2">₹{paid.toFixed(2)}</td>
               <td className="p-2">₹{remaining.toFixed(2)}</td>
 
+              {/* STATUS — only allow one change */}
               <td className="p-2">
                 <select
                   className="border p-1 rounded text-sm"
                   value={inv.status}
-                  onChange={(e) => onStatusChange(inv, e.target.value)}
+                  disabled={inv.status_locked} // ⬅️ lock permanently
+                  onChange={async (e) => {
+                    if (inv.status_locked) return;
+
+                    const newStatus = e.target.value;
+
+                    // Lock at UI level first
+                    setActionLoadingId(inv.id);
+
+                    await onStatusChange(inv, newStatus, { lock: true });
+
+                    setActionLoadingId(null);
+                  }}
                 >
                   <option value="unpaid">Unpaid</option>
                   <option value="partial">Partial</option>
@@ -49,14 +67,67 @@ export default function InvoiceArchiveTable({
                 </select>
               </td>
 
+              {/* CREATED DATE */}
               <td className="p-2">
                 {inv.created_at?.substring(0, 10)}
               </td>
 
+              {/* ACTION BUTTONS */}
               <td className="p-2 flex gap-2">
-                <Button size="sm" variant="outline" onClick={() => onDownloadPdf(inv)}>PDF</Button>
-                <Button size="sm" variant="outline" onClick={() => onOpenPayment(inv)}>Pay</Button>
-                <Button size="sm" onClick={() => onOpenView(inv)}>View</Button>
+
+                {/* PDF BUTTON */}
+                <Button
+                  size="sm"
+                  variant="outline"
+                  disabled={actionLoadingId === inv.id}
+                  onClick={async () => {
+                    if (actionLoadingId) return;
+
+                    setActionLoadingId(inv.id);
+                    await onDownloadPdf(inv);
+                    setActionLoadingId(null);
+                  }}
+                >
+                  PDF
+                </Button>
+
+                {/* PAY BUTTON — include validation */}
+                <Button
+                  size="sm"
+                  variant="outline"
+                  disabled={actionLoadingId === inv.id}
+                  onClick={async () => {
+                    if (actionLoadingId) return;
+
+                    // Payment validation is handled in modal as well,
+                    // but we prevent opening payment if remaining is 0
+                    if (remaining <= 0) {
+                      alert("Payment already completed.");
+                      return;
+                    }
+
+                    setActionLoadingId(inv.id);
+                    await onOpenPayment({ ...inv, remaining });
+                    setActionLoadingId(null);
+                  }}
+                >
+                  Pay
+                </Button>
+
+                {/* VIEW BUTTON */}
+                <Button
+                  size="sm"
+                  disabled={actionLoadingId === inv.id}
+                  onClick={async () => {
+                    if (actionLoadingId) return;
+
+                    setActionLoadingId(inv.id);
+                    await onOpenView(inv);
+                    setActionLoadingId(null);
+                  }}
+                >
+                  View
+                </Button>
               </td>
             </tr>
           );

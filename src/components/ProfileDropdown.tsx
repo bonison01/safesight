@@ -1,6 +1,13 @@
 // @ts-nocheck
 import { Link, useNavigate } from 'react-router-dom';
-import { User, Settings, Shield, LogOut, LogIn, Briefcase } from 'lucide-react';
+import {
+  User,
+  Settings,
+  Shield,
+  LogOut,
+  LogIn,
+  Briefcase,
+} from 'lucide-react';
 import { useAuth } from '@/hooks/useAuthContext';
 import {
   DropdownMenu,
@@ -12,7 +19,15 @@ import {
 import { Button } from '@/components/ui/button';
 
 const ProfileDropdown = () => {
-  const { isAuthenticated, isAdmin, isStaff, user, signOut } = useAuth();
+  const {
+    isAuthenticated,
+    isAdmin,
+    isManager, // ✅ ADDED
+    isStaff,
+    user,
+    signOut,
+  } = useAuth();
+
   const navigate = useNavigate();
 
   const handleSignOut = async () => {
@@ -48,15 +63,17 @@ const ProfileDropdown = () => {
           </div>
 
           {/* Customer Dashboard */}
-          <DropdownMenuItem asChild>
-            <Link
-              to="/customer-dashboard"
-              className="flex items-center px-3 py-2 text-sm text-gray-700 hover:bg-gray-100 cursor-pointer"
-            >
-              <Settings className="h-4 w-4 mr-3" />
-              Dashboard
-            </Link>
-          </DropdownMenuItem>
+          {!isAdmin && !isManager && !isStaff && (
+            <DropdownMenuItem asChild>
+              <Link
+                to="/customer-dashboard"
+                className="flex items-center px-3 py-2 text-sm text-gray-700 hover:bg-gray-100 cursor-pointer"
+              >
+                <Settings className="h-4 w-4 mr-3" />
+                Dashboard
+              </Link>
+            </DropdownMenuItem>
+          )}
 
           {/* Admin Panel */}
           {isAdmin && (
@@ -67,6 +84,19 @@ const ProfileDropdown = () => {
               >
                 <Shield className="h-4 w-4 mr-3" />
                 Admin Panel
+              </Link>
+            </DropdownMenuItem>
+          )}
+
+          {/* Manager Panel */}
+          {isManager && (
+            <DropdownMenuItem asChild>
+              <Link
+                to="/manager-dashboard"
+                className="flex items-center px-3 py-2 text-sm text-gray-700 hover:bg-gray-100 cursor-pointer"
+              >
+                <Briefcase className="h-4 w-4 mr-3" />
+                Manager Panel
               </Link>
             </DropdownMenuItem>
           )}
@@ -104,13 +134,12 @@ const ProfileDropdown = () => {
     <DropdownMenu>
       <DropdownMenuTrigger asChild>
         <Button
-  variant="ghost"
-  size="sm"
-  className="relative p-3 text-black bg-white hover:bg-black hover:text-white transition-all duration-200 rounded-full border border-gray-300"
->
-  <User className="h-7 w-7" />
-</Button>
-
+          variant="ghost"
+          size="sm"
+          className="relative p-3 text-black bg-white hover:bg-black hover:text-white transition-all duration-200 rounded-full border border-gray-300"
+        >
+          <User className="h-7 w-7" />
+        </Button>
       </DropdownMenuTrigger>
 
       <DropdownMenuContent

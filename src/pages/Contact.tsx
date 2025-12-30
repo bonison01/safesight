@@ -131,7 +131,7 @@ const Contact = () => {
                 <Mail className="w-6 h-6 text-blue-600 mt-1" />
                 <div>
                   <h3 className="font-semibold text-slate-800">Email</h3>
-                  <p className="text-slate-600">support@eyewellcare.com</p>
+                  <p className="text-slate-600">safesighteyeclinic@gmail.com</p>
                 </div>
               </div>
 
@@ -139,7 +139,7 @@ const Contact = () => {
                 <Phone className="w-6 h-6 text-blue-600 mt-1" />
                 <div>
                   <h3 className="font-semibold text-slate-800">Phone</h3>
-                  <p className="text-slate-600">(+91) 98765 43210</p>
+                  <p className="text-slate-600">87878 30551</p>
                 </div>
               </div>
 
@@ -148,9 +148,9 @@ const Contact = () => {
                 <div>
                   <h3 className="font-semibold text-slate-800">Clinic Address</h3>
                   <p className="text-slate-600">
-                    EyeWell Vision Care Center <br />
-                    Sagolband Sayang Leirak <br />
-                    Imphal West, Manipur 795004
+                    Safe Sight Eye Care<br />
+                    Thoubal Babu Bazar <br />
+                    Thoubal, Manipur 795138
                   </p>
                 </div>
               </div>

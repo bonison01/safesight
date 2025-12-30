@@ -9,18 +9,14 @@ import { Button } from "@/components/ui/button";
 import InvoicingCustomerPanel from "./invoicing/InvoicingCustomerPanel";
 import InvoicingItems from "./invoicing/InvoicingItems";
 import InvoicingPaymentPanel from "./invoicing/InvoicingPaymentPanel";
-import { useAuth } from "@/hooks/useAuthContext";
 
 /* -------------------------------------------------------
    Utility
 ------------------------------------------------------- */
-
 const numberToWords = (num) => {
   if (isNaN(num)) return "";
   return `${Math.round(num)} Rupees`;
 };
-// const { user, isAdmin, isManager } = useAuth();
-
 
 const getDraftKey = (sessionId) =>
   `invoice_draft_${sessionId ?? "default"}`;
@@ -30,17 +26,6 @@ const getDraftKey = (sessionId) =>
 ========================================================= */
 const InvoicingParent = ({ invoiceSessionId, onCustomerNameChange }) => {
   /* ---------- Toast + Overlay ---------- */
-  // const { user, isAdmin, isManager } = useAuth(); // ✅ CORRECT
-  const { user, profile, isAdmin, isManager, loading, profileLoading } = useAuth();
-
-  if (loading || profileLoading) {
-    return (
-      <div className="min-h-screen flex items-center justify-center">
-        Loading invoice…
-      </div>
-    );
-  }
-
   const [toast, setToast] = useState(null);
   const [savingOverlay, setSavingOverlay] = useState(false);
 
@@ -131,7 +116,7 @@ const InvoicingParent = ({ invoiceSessionId, onCustomerNameChange }) => {
         if (parsed.form) setForm((p) => ({ ...p, ...parsed.form }));
         if (parsed.items) setItems(parsed.items);
       }
-    } catch { }
+    } catch {}
   }, [invoiceSessionId]);
 
   /* AUTO-SAVE DRAFT */
@@ -141,13 +126,13 @@ const InvoicingParent = ({ invoiceSessionId, onCustomerNameChange }) => {
         getDraftKey(invoiceSessionId),
         JSON.stringify({ form, items })
       );
-    } catch { }
+    } catch {}
   }, [form, items]);
 
   const clearDraft = () => {
     try {
       localStorage.removeItem(getDraftKey(invoiceSessionId));
-    } catch { }
+    } catch {}
   };
 
   /* -----------------------------------------------------------
@@ -244,8 +229,8 @@ const InvoicingParent = ({ invoiceSessionId, onCustomerNameChange }) => {
       cur.discount_percent =
         cur.unit_price > 0
           ? Number(
-            ((cur.discount_amount / cur.unit_price) * 100).toFixed(2)
-          )
+              ((cur.discount_amount / cur.unit_price) * 100).toFixed(2)
+            )
           : 0;
     } else {
       cur[field] = value;
@@ -387,7 +372,7 @@ const InvoicingParent = ({ invoiceSessionId, onCustomerNameChange }) => {
 
     try {
       onCustomerNameChange(created.name);
-    } catch { }
+    } catch {}
 
     setShowCustomerModal(false);
     setNewCustomer({ name: "", phone: "", address: "", state: "" });
@@ -403,7 +388,7 @@ const InvoicingParent = ({ invoiceSessionId, onCustomerNameChange }) => {
 
     try {
       onCustomerNameChange("New Invoice");
-    } catch { }
+    } catch {}
 
     showToast("success", "Invoice reset");
   };
@@ -467,8 +452,8 @@ const InvoicingParent = ({ invoiceSessionId, onCustomerNameChange }) => {
           it.discount_amount > 0
             ? it.discount_amount
             : it.discount_percent > 0
-              ? unit * (it.discount_percent / 100)
-              : 0;
+            ? unit * (it.discount_percent / 100)
+            : 0;
         return s + disc * it.quantity;
       }, 0);
 
@@ -515,8 +500,8 @@ const InvoicingParent = ({ invoiceSessionId, onCustomerNameChange }) => {
           form.payment_status === "paid"
             ? grandTotal
             : form.payment_status === "partial"
-              ? form.paid_amount
-              : 0,
+            ? form.paid_amount
+            : 0,
 
         created_at: new Date().toISOString(),
         updated_at: new Date().toISOString(),
@@ -582,7 +567,7 @@ const InvoicingParent = ({ invoiceSessionId, onCustomerNameChange }) => {
       /* AFTER SAVE: update tab label */
       try {
         onCustomerNameChange(form.customer_name);
-      } catch { }
+      } catch {}
 
       showToast("success", "Invoice saved");
       resetFormCompletely();
@@ -630,6 +615,18 @@ const InvoicingParent = ({ invoiceSessionId, onCustomerNameChange }) => {
       </div>
 
 
+
+
+
+
+
+
+
+
+
+
+      
+
       {/* CUSTOMER PANEL (collapsible) */}
       <div className="border rounded-lg">
         <div
@@ -643,27 +640,23 @@ const InvoicingParent = ({ invoiceSessionId, onCustomerNameChange }) => {
         {showCustomerSection && (
           <div className="p-4">
             <InvoicingCustomerPanel
-  form={form}
-  setForm={setForm}
-  customers={customers}
-  currentUser={profile}   // ✅ KEEP THIS ONLY
-  isAdmin={isAdmin}
-  isManager={isManager}
-  onSelectCustomer={(c) => {
-    setForm((prev) => ({
-      ...prev,
-      customer_id: c.id,
-      customer_name: c.name,
-      customer_phone: c.phone,
-      customer_state: c.state,
-      customer_address: c.address,
-    }));
-    onCustomerNameChange?.(c.name);
-  }}
-/>
-
-
-
+              form={form}
+              setForm={setForm}
+              customers={customers}
+              onSelectCustomer={(c) => {
+                setForm((prev) => ({
+                  ...prev,
+                  customer_id: c.id,
+                  customer_name: c.name,
+                  customer_phone: c.phone,
+                  customer_state: c.state,
+                  customer_address: c.address,
+                }));
+                try {
+                  onCustomerNameChange(c.name);
+                } catch {}
+              }}
+            />
           </div>
         )}
       </div>
@@ -726,8 +719,8 @@ const InvoicingParent = ({ invoiceSessionId, onCustomerNameChange }) => {
                   it.discount_amount > 0
                     ? it.discount_amount
                     : it.discount_percent > 0
-                      ? unit * (it.discount_percent / 100)
-                      : 0;
+                    ? unit * (it.discount_percent / 100)
+                    : 0;
                 return s + disc * it.quantity;
               }, 0)}
               taxableAmount={subtotal}
@@ -738,9 +731,9 @@ const InvoicingParent = ({ invoiceSessionId, onCustomerNameChange }) => {
               remainingAmount={Math.max(
                 0,
                 subtotal -
-                (form.payment_status === "paid"
-                  ? subtotal
-                  : form.paid_amount)
+                  (form.payment_status === "paid"
+                    ? subtotal
+                    : form.paid_amount)
               )}
               numberToWords={numberToWords}
             />
@@ -762,8 +755,9 @@ const InvoicingParent = ({ invoiceSessionId, onCustomerNameChange }) => {
       {/* TOAST */}
       {toast && (
         <div
-          className={`fixed top-6 right-6 px-4 py-3 rounded-lg shadow-lg text-white text-sm flex items-center gap-3 animate-slide-in ${toast.type === "success" ? "bg-green-600" : "bg-red-600"
-            }`}
+          className={`fixed top-6 right-6 px-4 py-3 rounded-lg shadow-lg text-white text-sm flex items-center gap-3 animate-slide-in ${
+            toast.type === "success" ? "bg-green-600" : "bg-red-600"
+          }`}
         >
           <span>{toast.type === "success" ? "✓" : "⚠️"}</span>
           {toast.message}

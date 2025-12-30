@@ -35,9 +35,10 @@ interface VariantInput {
   stock_quantity?: number | null;
   image_url?: string | null;
 }
+// const { user, isAdmin, isManager, loading, signOut } = useAuth();
 
 export default function ProductManagement() {
-  const { user, isAdmin, loading, signOut } = useAuth();
+  const { user, isAdmin, isManager, loading, signOut } = useAuth();
   const navigate = useNavigate();
   const { toast } = useToast();
 
@@ -47,6 +48,7 @@ export default function ProductManagement() {
     localStorage.setItem("admin-active-tab", activeTab);
   }, [activeTab]);
 
+  
   // products state
   const [products, setProducts] = useState<Product[]>([]);
   const [loadingProducts, setLoadingProducts] = useState(true);
@@ -83,50 +85,72 @@ export default function ProductManagement() {
   });
 
   // staff permissions state
-  const [staffPermissions, setStaffPermissions] = useState<Record<string, boolean>>({});
-  const [loadingPermissions, setLoadingPermissions] = useState(true);
+  // unified permissions (admin / manager / staff)
+const [permissions, setPermissions] = useState<Record<string, boolean>>({});
+const [loadingPermissions, setLoadingPermissions] = useState(true);
+
+
+  
 
   // load staff permissions for current user (if not admin)
   useEffect(() => {
-    const loadPermissions = async () => {
-      if (!user) return setLoadingPermissions(false);
-      if (isAdmin) {
-        setStaffPermissions({
-          inventory: true,
-          billing: true,
-          invoice_archive: true,
-          customers: true,
-        });
-        setLoadingPermissions(false);
-        return;
-      }
+  const loadPermissions = async () => {
+    if (!user) {
+      setLoadingPermissions(false);
+      return;
+    }
 
-      try {
-        setLoadingPermissions(true);
-        const { data, error } = await supabase
-          .from("staff_permissions")
-          .select("permission_key, allowed")
-          .eq("staff_id", user.id);
+    // ADMIN → full access
+    if (isAdmin) {
+      setPermissions({
+        inventory: true,
+        billing: true,
+        invoice_archive: true,
+        customers: true,
+      });
+      setLoadingPermissions(false);
+      return;
+    }
 
-        if (error) throw error;
+    try {
+      setLoadingPermissions(true);
 
-        const map: Record<string, boolean> = {};
-        (data || []).forEach((r: any) => (map[r.permission_key] = !!r.allowed));
-        setStaffPermissions(map);
-      } catch (err) {
-        console.error("loadPermissions", err);
-        toast({ title: "Error", description: "Failed to load permissions", variant: "destructive" });
-      } finally {
-        setLoadingPermissions(false);
-      }
-    };
+      const table = isManager
+        ? ("manager_permissions" as any)
+        : ("staff_permissions" as any);
 
-    loadPermissions();
-  }, [user, isAdmin]);
+      const idField = isManager ? "manager_id" : "staff_id";
 
-  useEffect(() => {
-    if (!loading && (!user || (!isAdmin && !staffPermissions))) navigate("/auth?admin=true");
-  }, [user, isAdmin, loading, navigate, staffPermissions]);
+      const { data, error } = await supabase
+        .from(table)
+        .select("permission_key, allowed")
+        .eq(idField, user.id);
+
+      if (error) throw error;
+
+      const map: Record<string, boolean> = {};
+      (data || []).forEach((r: any) => {
+        map[r.permission_key] = !!r.allowed;
+      });
+
+      setPermissions(map);
+    } catch (err) {
+      console.error("loadPermissions", err);
+      setPermissions({});
+    } finally {
+      setLoadingPermissions(false);
+    }
+  };
+
+  loadPermissions();
+}, [user, isAdmin, isManager]);
+
+
+
+  // useEffect(() => {
+  //   if (!loading && (!user || (!isAdmin && !staffPermissions))) navigate("/auth?admin=true");
+  // }, [user, isAdmin, loading, navigate, staffPermissions]);
+
 
   useEffect(() => {
     if (isAdmin) fetchProducts();
@@ -344,10 +368,15 @@ export default function ProductManagement() {
     );
   }
 
-  if (!user || (!isAdmin && !Object.keys(staffPermissions).length)) return null;
+  // if (!user || (!isAdmin && !Object.keys(staffPermissions).length)) return null;
+  if (!user || (!isAdmin && !Object.keys(permissions).length))
+  return null;
+
+
 
   // Helpers to check access (admin bypasses)
-  const can = (permKey: string) => isAdmin || !!staffPermissions[permKey];
+  // const can = (permKey: string) => isAdmin || !!staffPermissions[permKey];
+const can = (permKey: string) => isAdmin || !!permissions[permKey];
 
   return (
     <div className="min-h-screen bg-gray-50">

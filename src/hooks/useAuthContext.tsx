@@ -9,7 +9,10 @@ export interface UserProfile {
   id: string;
   email: string | null;
   full_name: string | null;
-  role: 'admin' | 'staff' | 'user';  // ✅ staff added
+
+  // ✅ ADD manager
+  role: 'admin' | 'manager' | 'staff' | 'user';
+
   created_at: string;
   updated_at: string;
 
@@ -30,22 +33,28 @@ interface AuthContextType {
   user: User | null;
   session: Session | null;
   profile: UserProfile | null;
-  
+
   // Loading states
   loading: boolean;
   profileLoading: boolean;
-  
+
   // Computed properties
   isAuthenticated: boolean;
   isAdmin: boolean;
-  isStaff: boolean;   // ✅ added
+  isManager: boolean; // ✅ ADDED
+  isStaff: boolean;
   isUser: boolean;
-  
+
   // Auth methods
   signIn: (email: string, password: string) => Promise<{ error: any }>;
-  signUp: (email: string, password: string, fullName?: string, phone?: string) => Promise<{ error: any }>;
+  signUp: (
+    email: string,
+    password: string,
+    fullName?: string,
+    phone?: string
+  ) => Promise<{ error: any }>;
   signOut: () => Promise<void>;
-  
+
   // Utility methods
   refreshProfile: () => Promise<void>;
 }
@@ -66,7 +75,6 @@ export const useAuth = (): AuthContextType => {
 
 /**
  * Authentication Provider
- * Handles session, profile, auth state, and exposes helpers.
  */
 export const AuthProvider = ({ children }: { children: ReactNode }) => {
   // Base state
@@ -116,27 +124,22 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
       await fetchProfile(user.id);
     }
   };
+
   /**
    * Initialize Authentication System
-   * Listens for auth changes & loads initial session
    */
   useEffect(() => {
     let mounted = true;
     console.log("🔧 Initializing authentication system");
 
-    /**
-     * Handler for auth state changes
-     */
     const handleAuthChange = async (event: string, session: Session | null) => {
       if (!mounted) return;
 
       console.log("🔄 Auth state changed:", event, session?.user?.email || "No user");
 
-      // Set session and user immediately
       setSession(session);
       setUser(session?.user ?? null);
 
-      // Profile fetch occurs async
       if (session?.user) {
         setTimeout(() => {
           if (mounted) fetchProfile(session.user.id);
@@ -149,10 +152,9 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
       setLoading(false);
     };
 
-    // Listen to Supabase auth changes
-    const { data: { subscription } } = supabase.auth.onAuthStateChange(handleAuthChange);
+    const { data: { subscription } } =
+      supabase.auth.onAuthStateChange(handleAuthChange);
 
-    // Load initial session
     const initialize = async () => {
       try {
         const { data: { session }, error } = await supabase.auth.getSession();
@@ -175,7 +177,6 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
 
     initialize();
 
-    // Cleanup listener
     return () => {
       console.log("🧹 Cleaning up auth listener");
       mounted = false;
@@ -211,11 +212,16 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
   /**
    * Sign Up
    */
-  const signUp = async (email: string, password: string, fullName?: string, phone?: string) => {
+  const signUp = async (
+    email: string,
+    password: string,
+    fullName?: string,
+    phone?: string
+  ) => {
     try {
       console.log("📝 Signing up:", email);
 
-      const { data, error } = await supabase.auth.signUp({
+      const { error } = await supabase.auth.signUp({
         email,
         password,
         options: {
@@ -223,8 +229,8 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
           data: {
             full_name: fullName || "",
             phone: phone || "",
-          }
-        }
+          },
+        },
       });
 
       if (error) {
@@ -234,7 +240,6 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
 
       console.log("✅ Signup complete. Email verification required.");
       return { error: null };
-
     } catch (error) {
       console.error("💥 Sign up exception:", error);
       return { error };
@@ -260,7 +265,6 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
       if (typeof window !== "undefined") {
         window.location.href = "/";
       }
-
     } catch (error) {
       console.error("💥 Sign out exception:", error);
     }
@@ -271,35 +275,31 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
    */
   const isAuthenticated = !!user && !!session;
   const isAdmin = profile?.role === "admin";
-  const isStaff = profile?.role === "staff";   // ✅ ADDED
+  const isManager = profile?.role === "manager"; // ✅ ADDED
+  const isStaff = profile?.role === "staff";
   const isUser = profile?.role === "user";
+
   /**
-   * Auth context value
+   * Context value
    */
   const value: AuthContextType = {
-    // State
     user,
     session,
     profile,
     loading,
     profileLoading,
 
-    // Computed
     isAuthenticated,
     isAdmin,
-    isStaff,   // ✅ included
+    isManager,
+    isStaff,
     isUser,
 
-    // Methods
     signIn,
     signUp,
     signOut,
     refreshProfile,
   };
 
-  return (
-    <AuthContext.Provider value={value}>
-      {children}
-    </AuthContext.Provider>
-  );
+  return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
 };

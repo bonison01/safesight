@@ -1,4 +1,3 @@
-// src/components/admin/invoicing/InvoicingCustomerPanel.tsx
 // @ts-nocheck
 "use client";
 
@@ -14,22 +13,85 @@ const InvoicingCustomerPanel = ({
   onSelectCustomer,
   onCustomerNameChange
 }) => {
+  /* =====================================================
+     AUTH / ROLE
+  ===================================================== */
+  const [currentRole, setCurrentRole] = useState<string | null>(null);
+  const [currentUserId, setCurrentUserId] = useState<string | null>(null);
+
+  /* =====================================================
+     CUSTOMER SEARCH
+  ===================================================== */
   const [query, setQuery] = useState("");
   const [results, setResults] = useState([]);
   const [showList, setShowList] = useState(false);
 
-  /* ---------------- STAFF LIST (REFERENCE DROPDOWN) ---------------- */
+  /* =====================================================
+     STAFF LIST (ONLY FOR MANAGER)
+  ===================================================== */
   const [staffList, setStaffList] = useState([]);
   const [staffLoading, setStaffLoading] = useState(false);
 
+  /* =====================================================
+     NEW CUSTOMER MODAL
+  ===================================================== */
+  const [showModal, setShowModal] = useState(false);
+  const [newCustomer, setNewCustomer] = useState({
+    name: "",
+    phone: "",
+    state: "",
+    address: ""
+  });
+
+  /* =====================================================
+     LOAD CURRENT USER ROLE
+  ===================================================== */
   useEffect(() => {
-    loadStaff();
+    loadCurrentUserRole();
   }, []);
+
+  const loadCurrentUserRole = async () => {
+    const {
+      data: { user },
+      error
+    } = await supabase.auth.getUser();
+
+    if (error || !user) return;
+
+    setCurrentUserId(user.id);
+
+    const { data, error: roleError } = await supabase
+      .from("profiles")
+      .select("role, full_name")
+      .eq("id", user.id)
+      .single();
+
+    if (!roleError && data) {
+      setCurrentRole(data.role);
+
+      // Auto set reference for staff
+      if (data.role === "staff") {
+        setForm(prev => ({
+          ...prev,
+          reference_by: user.id,
+          reference_name: data.full_name || "Self"
+        }));
+      }
+    }
+  };
+
+  /* =====================================================
+     LOAD STAFF (ONLY IF MANAGER)
+  ===================================================== */
+  useEffect(() => {
+    if (currentRole === "manager") {
+      loadStaff();
+    }
+  }, [currentRole]);
 
   const loadStaff = async () => {
     setStaffLoading(true);
     try {
-      // role should match stored value in DB (lowercase 'staff')
       const { data, error } = await supabase
         .from("profiles")
         .select("id, full_name, phone")
@@ -41,6 +103,7 @@ const InvoicingCustomerPanel = ({
         setStaffList([]);
         return;
       }
+
       setStaffList(data ?? []);
     } catch (e) {
       console.error("loadStaff exception", e);
@@ -50,16 +113,9 @@ const InvoicingCustomerPanel = ({
     }
   };
 
-  /* ---------------- NEW CUSTOMER MODAL ---------------- */
-  const [showModal, setShowModal] = useState(false);
-  const [newCustomer, setNewCustomer] = useState({
-    name: "",
-    phone: "",
-    state: "",
-    address: ""
-  });
-
-  /* ---------------- SEARCH FILTER ---------------- */
+  /* =====================================================
+     CUSTOMER SEARCH FILTER
+  ===================================================== */
   useEffect(() => {
     if (!query.trim()) {
       setResults([]);
@@ -72,15 +128,16 @@ const InvoicingCustomerPanel = ({
         (c.name || "").toLowerCase().includes(q) ||
         (c.phone || "").toLowerCase().includes(q)
     );
+
     setResults(r.slice(0, 10));
   }, [query, customers]);
 
-  /* ---------------- SELECT CUSTOMER ---------------- */
+  /* =====================================================
+     SELECT CUSTOMER
+  ===================================================== */
   const handleSelect = (c) => {
-    // Build full address from customer table (fallback to address or empty)
     const fullAddress = c.address ?? c.customer_address ?? "";
 
-    // Update parent form
     setForm(prev => ({
       ...prev,
       customer_id: c.id,
@@ -93,13 +150,14 @@ const InvoicingCustomerPanel = ({
     try { onSelectCustomer?.(c); } catch (_) {}
     try { onCustomerNameChange?.(c.name); } catch (_) {}
 
-    // clear local search UI
     setQuery("");
     setResults([]);
     setShowList(false);
   };
 
-  /* ---------------- SAVE NEW CUSTOMER ---------------- */
+  /* =====================================================
+     SAVE NEW CUSTOMER
+  ===================================================== */
   const saveCustomer = async () => {
     if (!newCustomer.name.trim()) return alert("Name required.");
 
@@ -113,14 +171,15 @@ const InvoicingCustomerPanel = ({
       return alert("Failed to save customer");
     }
 
-    const created = data[0];
-    handleSelect(created);
+    handleSelect(data[0]);
 
     setShowModal(false);
     setNewCustomer({ name: "", phone: "", state: "", address: "" });
   };
 
-  /* ---------------- RESET FORM INPUTS ---------------- */
+  /* =====================================================
+     RESET
+  ===================================================== */
   const resetInputs = () => {
     setForm(prev => ({
       ...prev,
@@ -132,9 +191,6 @@ const InvoicingCustomerPanel = ({
       reference_by: "",
       reference_name: ""
     }));
-    setQuery("");
-    setResults([]);
-    setShowList(false);
   };
 
   return (
@@ -162,8 +218,7 @@ const InvoicingCustomerPanel = ({
                 <div
                   key={c.id}
                   className="px-3 py-2 hover:bg-gray-100 cursor-pointer"
-                  onMouseDown={(e) => {
-                    // prevent blur hiding the list before selection
+                  onMouseDown={e => {
                     e.preventDefault();
                     handleSelect(c);
                   }}
@@ -176,17 +231,16 @@ const InvoicingCustomerPanel = ({
           )}
         </div>
 
-        <div className="flex items-center gap-2">
+        <div className="flex gap-2">
           <Button variant="outline" onClick={() => setShowModal(true)}>
             + Add Customer
           </Button>
-
           <Button variant="ghost" onClick={resetInputs}>
             Reset
           </Button>
         </div>
 
-        {/* Customer Name */}
+        {/* Customer Fields */}
         <input
           className="border p-3 rounded w-full"
           placeholder="Customer Name"
@@ -194,7 +248,6 @@ const InvoicingCustomerPanel = ({
           onChange={e => setForm(prev => ({ ...prev, customer_name: e.target.value }))}
         />
 
-        {/* Phone + State */}
         <div className="flex gap-2">
           <input
             className="border p-3 rounded w-full"
@@ -210,83 +263,85 @@ const InvoicingCustomerPanel = ({
           />
         </div>
 
-        {/* Customer Address */}
         <textarea
           className="border p-3 rounded w-full"
-          placeholder="Customer Address"
           rows={2}
+          placeholder="Customer Address"
           value={form.customer_address ?? ""}
           onChange={e =>
             setForm(prev => ({ ...prev, customer_address: e.target.value }))
           }
         />
 
-        {/* Reference Dropdown (Profiles.role = 'staff') */}
-        <div>
-          <label className="text-xs text-gray-600 block mb-1">Reference</label>
-          <select
-            className="border p-3 rounded w-full"
-            value={form.reference_by || ""}
-            onChange={e => {
-              const staffId = e.target.value;
-              const staff = staffList.find(s => s.id === staffId);
-              setForm(prev => ({
-                ...prev,
-                reference_by: staffId,
-                reference_name: staff ? staff.full_name : ""
-              }));
-            }}
-            disabled={staffLoading}
-          >
-            <option value="">Select Reference</option>
-            {staffList.map(s => (
-              <option key={s.id} value={s.id}>
-                {s.full_name} {s.phone ? `• ${s.phone}` : ""}
-              </option>
-            ))}
-          </select>
-        </div>
+        {/* ================= MANAGER REFERENCE ================= */}
+        {currentRole === "manager" && (
+          <div>
+            <label className="text-xs text-gray-600 block mb-1">
+              Reference (Staff)
+            </label>
+            <select
+              className="border p-3 rounded w-full"
+              value={form.reference_by || ""}
+              onChange={e => {
+                const staffId = e.target.value;
+                const staff = staffList.find(s => s.id === staffId);
 
-        {/* Add Customer Modal */}
+                setForm(prev => ({
+                  ...prev,
+                  reference_by: staffId,
+                  reference_name: staff ? staff.full_name : ""
+                }));
+              }}
+              disabled={staffLoading}
+            >
+              <option value="">Select Staff</option>
+              {staffList.map(s => (
+                <option key={s.id} value={s.id}>
+                  {s.full_name} {s.phone ? `• ${s.phone}` : ""}
+                </option>
+              ))}
+            </select>
+          </div>
+        )}
+
+        {/* ================= ADD CUSTOMER MODAL ================= */}
         {showModal && (
           <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50">
-            <Card className="w-full max-w-md bg-white border shadow-lg">
+            <Card className="w-full max-w-md bg-white">
               <CardHeader>
                 <CardTitle>Add Customer</CardTitle>
               </CardHeader>
-
               <CardContent className="space-y-3">
                 <input
                   className="border p-3 rounded w-full"
                   placeholder="Name"
                   value={newCustomer.name}
-                  onChange={e => setNewCustomer(prev => ({ ...prev, name: e.target.value }))}
+                  onChange={e => setNewCustomer(p => ({ ...p, name: e.target.value }))}
                 />
-
                 <input
                   className="border p-3 rounded w-full"
                   placeholder="Phone"
                   value={newCustomer.phone}
-                  onChange={e => setNewCustomer(prev => ({ ...prev, phone: e.target.value }))}
+                  onChange={e => setNewCustomer(p => ({ ...p, phone: e.target.value }))}
                 />
-
                 <input
                   className="border p-3 rounded w-full"
                   placeholder="State"
                   value={newCustomer.state}
-                  onChange={e => setNewCustomer(prev => ({ ...prev, state: e.target.value }))}
+                  onChange={e => setNewCustomer(p => ({ ...p, state: e.target.value }))}
                 />
-
                 <textarea
                   className="border p-3 rounded w-full"
-                  placeholder="Address"
                   rows={2}
+                  placeholder="Address"
                   value={newCustomer.address}
-                  onChange={e => setNewCustomer(prev => ({ ...prev, address: e.target.value }))}
+                  onChange={e => setNewCustomer(p => ({ ...p, address: e.target.value }))}
                 />
 
                 <div className="flex justify-end gap-2 pt-2">
-                  <Button variant="outline" onClick={() => setShowModal(false)}>Cancel</Button>
+                  <Button variant="outline" onClick={() => setShowModal(false)}>
+                    Cancel
+                  </Button>
                   <Button onClick={saveCustomer}>Save</Button>
                 </div>
               </CardContent>
